@@ -1,0 +1,16 @@
+# Local configs with secrets — commit only *.example
+admin/js/config.js
+windows/**/appsettings.local.json
+windows/installer/config.json
+
+# .NET build output
+bin/
+obj/
+*.user
+.vs/
+publish/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
