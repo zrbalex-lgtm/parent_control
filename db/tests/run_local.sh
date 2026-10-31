@@ -13,4 +13,5 @@ run() { psql -v ON_ERROR_STOP=1 -q -d "$DB" -f "$1"; }
 run tests/00_supabase_stub.sql
 run migrations/001_schema.sql
 run migrations/002_rpc.sql
+run migrations/003_tighten_grants.sql
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f tests/01_rpc_tests.sql 2>&1 >/dev/null | sed 's/^psql:[^ ]* NOTICE:  //'

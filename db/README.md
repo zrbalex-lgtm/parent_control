@@ -8,7 +8,7 @@
 
 ## Applying to Supabase
 
-1. Run `001_schema.sql`, then `002_rpc.sql` (SQL editor or migrations).
+1. Run the migrations in order: `001_schema.sql`, `002_rpc.sql`, `003_tighten_grants.sql`.
 2. Auth → Providers → Email: **disable sign-ups**.
 3. Create the parent user (Auth → Users → Add user), then:
    ```sql
