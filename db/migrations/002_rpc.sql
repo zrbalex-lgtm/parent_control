@@ -5,6 +5,8 @@
 -- pgcrypto lives in schema "extensions" on Supabase, hence the search_path.
 -- =====================================================================
 
+set search_path = parent_control, extensions;
+
 -- ---------------------------------------------------------------------
 -- Internal helpers
 -- ---------------------------------------------------------------------
@@ -13,7 +15,7 @@
 create or replace function fn_norm_code(p_code text)
 returns text
 language sql immutable
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
   select upper(regexp_replace(coalesce(p_code, ''), '[^A-Za-z0-9]', '', 'g'))
 $$;
@@ -22,7 +24,7 @@ $$;
 create or replace function fn_new_reg_code()
 returns text
 language plpgsql volatile
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
 declare
   alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';  -- 32 chars, so byte % 32 is uniform
@@ -42,7 +44,7 @@ end $$;
 create or replace function fn_new_secret()
 returns text
 language sql volatile
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
   select rtrim(translate(encode(gen_random_bytes(32), 'base64'), '+/', '-_'), '=')
 $$;
@@ -61,7 +63,7 @@ returns table (
   title      text
 )
 language plpgsql stable
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
 declare
   e jsonb;
@@ -96,7 +98,7 @@ end $$;
 create or replace function fn_spent_minutes(p_child uuid, p_date date)
 returns int
 language sql stable
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
   select count(distinct h.minute_ts)::int
   from heartbeats h
@@ -111,7 +113,7 @@ $$;
 create or replace function admin_create_device(p_name text)
 returns table (device_id uuid, code text)
 language plpgsql security definer
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
 #variable_conflict use_column
 declare
@@ -140,7 +142,7 @@ end $$;
 create or replace function admin_reset_device_code(p_device_id uuid)
 returns text
 language plpgsql security definer
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
 declare
   v_code text;
@@ -173,7 +175,7 @@ create or replace function device_register(
 )
 returns table (device_id uuid, device_secret text)
 language plpgsql security definer
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
 #variable_conflict use_column
 declare
@@ -219,7 +221,7 @@ create or replace function device_sync(
 )
 returns jsonb
 language plpgsql security definer
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
 declare
   v_dev      devices%rowtype;
@@ -361,7 +363,7 @@ end $$;
 create or replace function admin_dashboard(p_local_date date)
 returns jsonb
 language plpgsql stable security definer
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
 begin
   if not is_admin() then

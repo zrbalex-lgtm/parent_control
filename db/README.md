@@ -1,19 +1,34 @@
 # db — Supabase schema
 
+All objects live in schema **`parent_control`** of the shared "Home projects"
+Supabase project (one schema per home project; Auth is shared).
+
 | File | What |
 |---|---|
 | `migrations/001_schema.sql` | Tables, views, RLS |
+| `migrations/003_tighten_grants.sql` | Function grants after advisor run |
 | `migrations/002_rpc.sql` | RPC: `admin_create_device`, `admin_reset_device_code`, `admin_dashboard`, `device_register`, `device_sync` |
 | `tests/` | Local test run against plain PostgreSQL (with a Supabase stub) |
 
 ## Applying to Supabase
 
 1. Run the migrations in order: `001_schema.sql`, `002_rpc.sql`, `003_tighten_grants.sql`.
-2. Auth → Providers → Email: **disable sign-ups**.
-3. Create the parent user (Auth → Users → Add user), then:
+2. Settings → API (Data API) → **Exposed schemas**: add `parent_control`.
+3. Auth → Providers → Email: **disable sign-ups** (shared by all home projects).
+4. Create the parent user (Auth → Users → Add user), then:
    ```sql
-   insert into app_admins (user_id) select id from auth.users where email = '<parent email>';
+   insert into parent_control.app_admins (user_id)
+   select id from auth.users where email = '<parent email>';
    ```
+   Being signed in is not enough: only users in `parent_control.app_admins`
+   see this project's data, so other home-project users get nothing here.
+
+## Clients
+
+Every client must target the schema:
+- supabase-js: `createClient(url, key, { db: { schema: 'parent_control' } })`
+- plain HTTP (Windows service): headers `Content-Profile: parent_control`
+  (POST /rest/v1/rpc/...) and `Accept-Profile: parent_control` (GET).
 
 ## Local tests
 

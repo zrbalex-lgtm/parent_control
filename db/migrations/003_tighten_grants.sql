@@ -1,5 +1,7 @@
 -- Tighten function grants after the Supabase security advisor run.
 
+set search_path = parent_control, extensions;
+
 -- is_admin() is only needed by signed-in users (RLS policies, admin RPC).
 revoke execute on function is_admin() from public, anon;
 grant execute on function is_admin() to authenticated;

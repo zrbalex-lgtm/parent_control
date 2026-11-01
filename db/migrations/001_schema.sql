@@ -1,9 +1,13 @@
 -- =====================================================================
 -- Home screen-time control: tables, views, RLS (Supabase / PostgreSQL)
--- RPC functions live in 002_rpc.sql.
+-- Everything lives in schema "parent_control" (one Supabase project hosts
+-- several home projects, one schema each). RPC functions: 002_rpc.sql.
 -- =====================================================================
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
+
+create schema if not exists parent_control;
+set search_path = parent_control, extensions;
 
 -- ---------------------------------------------------------------------
 -- Admin identity
@@ -19,7 +23,7 @@ create or replace function is_admin()
 returns boolean
 language sql stable security definer set search_path = ''
 as $$
-  select exists (select 1 from public.app_admins where user_id = auth.uid())
+  select exists (select 1 from parent_control.app_admins where user_id = auth.uid())
 $$;
 
 -- ---------------------------------------------------------------------
@@ -145,7 +149,7 @@ create table app_groups (
 -- Reject invalid regexes up front so report views never fail at runtime.
 create or replace function trg_app_groups_validate()
 returns trigger language plpgsql
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
 begin
   if new.match_type = 'regex' then
@@ -162,7 +166,7 @@ create trigger app_groups_validate
 create or replace function fn_app_group(p_exe text, p_product text, p_title text)
 returns text
 language sql stable
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
   select ag.group_name
   from app_groups ag
@@ -222,7 +226,7 @@ create table command_deliveries (
 create or replace function fn_effective_day(p_child uuid, p_date date)
 returns table (limit_minutes int, window_from time, window_to time, bonus_minutes int)
 language sql stable
-set search_path = public, extensions, pg_temp
+set search_path = parent_control, extensions, pg_temp
 as $$
   select
     case when o.child_id is not null and o.limit_minutes is not null
@@ -337,4 +341,24 @@ begin
 end $$;
 
 -- Defense in depth: PCs talk only through RPC, so anon needs no table access.
-revoke all on all tables in schema public from anon;
+revoke all on all tables in schema parent_control from anon;
+
+-- ---------------------------------------------------------------------
+-- Schema grants. Supabase auto-grants only in "public", so a custom
+-- schema needs explicit grants; RLS still filters every row.
+-- ---------------------------------------------------------------------
+grant usage on schema parent_control to anon, authenticated, service_role;
+
+grant select, insert, update, delete on all tables in schema parent_control to authenticated;
+grant usage, select on all sequences in schema parent_control to authenticated;
+grant all on all tables in schema parent_control to service_role;
+grant all on all sequences in schema parent_control to service_role;
+
+alter default privileges in schema parent_control
+  grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema parent_control
+  grant usage, select on sequences to authenticated;
+alter default privileges in schema parent_control
+  grant all on tables to service_role;
+alter default privileges in schema parent_control
+  grant all on sequences to service_role;
