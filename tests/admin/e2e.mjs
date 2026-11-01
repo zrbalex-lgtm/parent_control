@@ -53,7 +53,7 @@ await page.screenshot({ path: `${shots}/01-login.png` });
 await page.getByLabel('Пароль').fill('secret');
 await page.getByRole('button', { name: 'Войти' }).click();
 await page.getByRole('heading', { name: 'Главная' }).waitFor();
-await page.getByText('Новых запросов нет.').waitFor();
+await page.getByText('Добавь детей на вкладке «Дети».').waitFor();
 step('login lands on home with no requests');
 await page.getByRole('link', { name: /Устройства/ }).click();
 await page.getByRole('heading', { name: 'Устройства' }).waitFor();
@@ -141,7 +141,7 @@ await page.screenshot({ path: `${shots}/08-requests.png`, fullPage: true });
 }
 await page.getByText('Миша: добавлено 15 мин').waitFor();
 await page.locator('li.request', { hasText: 'Анна' }).getByRole('button', { name: 'Отклонить' }).click();
-await page.getByText('Новых запросов нет.').waitFor();
+await page.locator('li.request').first().waitFor({ state: 'detached' });
 await page.getByText('добавлено 15').waitFor();
 {
   const s = await store();
@@ -156,8 +156,10 @@ await page.screenshot({ path: `${shots}/09-requests-after.png`, fullPage: true }
 await page.getByRole('button', { name: 'Настройки' }).click();
 await page.getByRole('switch').check();
 await page.getByText('Закрыт по умолчанию: включено').waitFor();
-await page.getByRole('heading', { name: 'Доступ сегодня' }).waitFor();
-await page.locator('.access-row', { hasText: 'Миша' }).getByText('Доступ закрыт').waitFor();
+await page.locator('.child-card[data-child="Миша"]').getByText('Доступ закрыт').waitFor();
+const mishaCard = page.locator('.child-card[data-child="Миша"]');
+const annaCard = page.locator('.child-card[data-child="Анна"]');
+await mishaCard.getByText('Доступ закрыт').waitFor();
 await page.evaluate(() => {
   const s = window.__store;
   const anna = s.children.find((c) => c.name === 'Анна');
@@ -167,20 +169,59 @@ await page.evaluate(() => {
 await page.getByRole('button', { name: 'Обновить' }).click();
 await page.getByText('Анна просит открыть доступ').waitFor();
 await page.screenshot({ path: `${shots}/10-access.png`, fullPage: true });
-await page.locator('.access-row', { hasText: 'Миша' }).getByRole('button', { name: 'Открыть' }).click();
+await mishaCard.getByRole('button', { name: 'Открыть доступ' }).click();
 await page.getByText('Миша: доступ открыт').waitFor();
 await page.locator('li.request', { hasText: 'Анна' }).getByRole('button', { name: 'Открыть доступ' }).click();
 await page.getByText('Анна: доступ открыт').waitFor();
-await page.locator('.access-row', { hasText: 'Анна' }).getByText('Доступ открыт').waitFor();
+await annaCard.getByText('Доступ открыт').waitFor();
 if ((await store()).day_unlocks.length !== 2) fail('two day unlocks');
-await page.locator('.access-row', { hasText: 'Миша' }).getByRole('button', { name: 'Закрыть' }).click();
-await page.locator('.access-row', { hasText: 'Миша' }).getByText('Доступ закрыт').waitFor();
-await page.screenshot({ path: `${shots}/11-access-after.png`, fullPage: true });
+await mishaCard.getByRole('button', { name: 'Закрыть доступ' }).click();
+await mishaCard.getByText('Доступ закрыт').waitFor();
 await page.getByRole('button', { name: 'Настройки' }).click();
 await page.getByRole('switch').uncheck();
 await page.getByText('Закрыт по умолчанию: выключено').waitFor();
-if (await page.getByRole('heading', { name: 'Доступ сегодня' }).count()) fail('access card hidden when off');
+await mishaCard.getByRole('button', { name: /доступ/ }).waitFor({ state: 'detached' });
 step('locked by default: toggle, open/close, unlock request');
+
+// ---------- dashboard quick actions ----------
+await mishaCard.getByText('Minecraft').waitFor();
+await mishaCard.getByText('За «Комп в детской»').waitFor();
+await mishaCard.getByRole('button', { name: 'Добавить 30 минут: Миша' }).click();
+await page.getByText('Миша: +30 мин').waitFor();
+await mishaCard.getByText('(бонус +45)').waitFor();
+await mishaCard.getByRole('button', { name: /с причиной/ }).click();
+await page.getByLabel('Минуты (минус — забрать время)').fill('-10');
+await page.getByLabel('Причина (необязательно)').fill('не убрал комнату');
+await page.getByRole('dialog').getByRole('button', { name: 'Сохранить' }).click();
+await page.getByText('Миша: -10 мин').waitFor();
+await mishaCard.getByText('(бонус +35)').waitFor();
+
+await mishaCard.getByRole('button', { name: 'Заблокировать' }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Заблокировать' }).click();
+await page.getByText('Миша: заблокирован до конца дня').waitFor();
+await mishaCard.getByText('Заблокирован до 00:00').waitFor();
+await page.screenshot({ path: `${shots}/12-dashboard-locked.png`, fullPage: true });
+await mishaCard.getByRole('button', { name: 'Снять блокировку' }).click();
+await page.getByText('Миша: блокировка снята').waitFor();
+await annaCard.getByRole('button', { name: 'Через 5 мин' }).click();
+await annaCard.getByText(/Блокировка в \d\d:\d\d/).waitFor();
+
+await annaCard.getByRole('button', { name: 'Сообщение' }).click();
+await page.getByLabel('Появится на экране в течение минуты').fill('Ужинать!');
+await page.getByRole('dialog').getByRole('button', { name: 'Отправить' }).click();
+await page.getByText('Сообщение отправлено').waitFor();
+{
+  const s = await store();
+  const anna = s.children.find((c) => c.name === 'Анна');
+  const msg = s.commands.find((k) => k.kind === 'message');
+  if (!msg || msg.child_id !== anna.id || msg.message !== 'Ужинать!') fail('message command');
+  const lock = s.commands.find((k) => k.kind === 'lock' && k.child_id !== anna.id);
+  if (!lock || !lock.cancelled_at) fail('lock cancelled');
+  const reasonBonus = s.bonuses.find((b) => b.minutes === -10);
+  if (!reasonBonus || reasonBonus.reason !== 'не убрал комнату') fail('negative bonus with reason');
+}
+await page.screenshot({ path: `${shots}/13-dashboard.png`, fullPage: true });
+step('dashboard: bonus, custom bonus, lock/unlock, lock in 5 min, message');
 
 // ---------- schedule ----------
 await page.getByRole('link', { name: /Расписание/ }).click();

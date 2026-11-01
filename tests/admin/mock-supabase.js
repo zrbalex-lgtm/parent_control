@@ -22,12 +22,14 @@ const store = (window.__store = {
   bonuses: [],
   settings: [{ id: 1, locked_by_default: false }],
   day_unlocks: [],
+  commands: [],
+  schedule_weekly_seed: null,
 });
 store.device_accounts.push(
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-1', windows_user: 'misha', child_id: null, last_seen_at: iso(60e3) },
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-2', windows_user: 'papa', child_id: null, last_seen_at: iso(7200e3) });
 
-const PK = { settings: ['id'], day_unlocks: ['child_id', 'local_date'], children: ['id'], devices: ['id'], device_accounts: ['id'],
+const PK = { commands: ['id'], bonuses: ['id'], settings: ['id'], day_unlocks: ['child_id', 'local_date'], children: ['id'], devices: ['id'], device_accounts: ['id'],
              schedule_weekly: ['child_id', 'weekday'], schedule_overrides: ['child_id', 'local_date'] };
 const TIME_COLS = ['window_from', 'window_to'];
 const toPgTime = (r) => {
@@ -51,6 +53,7 @@ class Query {
   eq(c, v) { this.filters.push((r) => r[c] === v); return this; }
   gte(c, v) { this.filters.push((r) => r[c] != null && r[c] >= v); return this; }
   neq(c, v) { this.filters.push((r) => r[c] !== v); return this; }
+  in(c, vs) { this.filters.push((r) => vs.includes(r[c])); return this; }
   order(c, opts = {}) { this.orders.push({ c, desc: opts.ascending === false }); return this; }
   insert(rows) { this.op = 'insert'; this.payload = [].concat(rows); return this; }
   update(patch) { this.op = 'update'; this.payload = patch; return this; }
@@ -144,10 +147,26 @@ export function createClient() {
       if (name === 'is_admin') return { data: true, error: null };
       if (name === 'admin_dashboard') {
         const locked = store.settings[0].locked_by_default;
-        return { data: { children: store.children.map((c) => ({
-          ...c, requires_unlock: locked,
-          unlocked: store.day_unlocks.some((u) => u.child_id === c.id && u.local_date === args.p_local_date),
-        })) }, error: null };
+        const now = Date.now();
+        const isoDow = ((new Date().getDay() + 6) % 7) + 1;
+        return { data: { children: store.children.map((c, i) => {
+          const w = store.schedule_weekly.find((r) => r.child_id === c.id && r.weekday === isoDow);
+          return {
+            ...c,
+            limit_minutes: w ? w.limit_minutes : 120,
+            bonus_minutes: store.bonuses.filter((b) => b.child_id === c.id && b.local_date === args.p_local_date)
+              .reduce((a, b) => a + b.minutes, 0),
+            window_from: w ? w.window_from.slice(0, 5) : '00:00',
+            window_to: w ? w.window_to.slice(0, 5) : '24:00',
+            spent_minutes: i === 0 ? 100 : 20,
+            requires_unlock: locked,
+            unlocked: store.day_unlocks.some((u) => u.child_id === c.id && u.local_date === args.p_local_date),
+            now: i === 0 ? { device_id: store.devices[0].id, device_name: store.devices[0].name, state: 'active',
+                             app_group: 'Minecraft', exe: 'javaw.exe', title: 'Minecraft 1.21', minute_ts: new Date().toISOString() } : null,
+            locks: store.commands.filter((k) => k.child_id === c.id && k.kind === 'lock' && !k.cancelled_at
+                                          && (!k.lock_until || Date.parse(k.lock_until) > now)),
+          };
+        }) }, error: null };
       }
       if (name === 'admin_decide_request') {
         const r = store.time_requests.find((x) => x.id === args.p_id);

@@ -150,6 +150,24 @@ export const api = {
     unwrap(await sb.from('day_unlocks').delete().eq('child_id', childId).eq('local_date', localDateStr));
   },
 
+  // ---------------- quick actions ----------------
+  async addBonus(childId, localDateStr, minutes, reason) {
+    unwrap(await sb.from('bonuses').insert({ child_id: childId, local_date: localDateStr, minutes, reason: reason || null }));
+  },
+  // Lock on all PCs of the child from `from` until `until` (Date objects).
+  async lockChild(childId, from, until) {
+    unwrap(await sb.from('commands').insert({
+      child_id: childId, kind: 'lock', lock_from: from.toISOString(), lock_until: until.toISOString(),
+    }));
+  },
+  async cancelLocks(lockIds) {
+    if (!lockIds.length) return;
+    unwrap(await sb.from('commands').update({ cancelled_at: new Date().toISOString() }).in('id', lockIds));
+  },
+  async sendMessage(childId, text) {
+    unwrap(await sb.from('commands').insert({ child_id: childId, kind: 'message', message: text }));
+  },
+
   // ---------------- time requests ----------------
   // Pending ones plus everything decided in the last 24 hours.
   async listRequests() {
