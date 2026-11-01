@@ -30,6 +30,7 @@ public sealed class WindowsSessionControl(TrayHub hub, GuardEngine engine, ILogg
         {
             Type = IpcTypes.Lock,
             Text = text,
+            LockReason = reason.ToString(),
             Seconds = (int)grace.TotalSeconds,
             CanRequest = canRequest,
         });

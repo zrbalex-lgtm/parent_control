@@ -1,6 +1,6 @@
 namespace ParentControl.Core;
 
-public enum LockReason { Window, Limit, Command }
+public enum LockReason { Window, Limit, Command, NotUnlocked }
 
 public static class RemainingReasons
 {
@@ -58,7 +58,7 @@ public sealed class Policy(GuardEngine engine, TimeProvider time)
             day = child.Days.Where(d => d.LocalDate < today).MaxBy(d => d.LocalDate);
             if (day is not null)
             {
-                day = day with { BonusMinutes = 0 };
+                day = day with { BonusMinutes = 0, Unlocked = false };
                 stale = true;
             }
         }
@@ -80,6 +80,7 @@ public sealed class Policy(GuardEngine engine, TimeProvider time)
         LockReason? reason =
             activeLock ? LockReason.Command
             : !inWindow ? LockReason.Window
+            : day is { RequiresUnlock: true, Unlocked: false } ? LockReason.NotUnlocked
             : allowed is { } a && spent >= a ? LockReason.Limit
             : null;
 

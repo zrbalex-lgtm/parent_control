@@ -102,6 +102,21 @@ public class RequestsAndIpcTests : IDisposable
     }
 
     [Fact]
+    public async Task Unlock_request_is_uploaded_with_kind_and_reported()
+    {
+        _api.Respond = _ => Server();
+        await _engine.SyncAsync(default);
+        Assert.Equal(RequestTimeResult.Queued, _engine.RequestTime("S-1", 0, "уроки сделал", RequestKinds.Unlock));
+        Assert.Equal(RequestKinds.Unlock, _engine.OpenRequestFor(Misha)!.Kind);
+
+        _api.Respond = _ => Server([new RequestInfo(9, Guid.NewGuid(), Misha, 5, null, RequestStatuses.Approved,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, RequestKinds.Unlock)]);
+        await _engine.SyncAsync(default);
+        Assert.Equal(RequestKinds.Unlock, Assert.Single(_api.Requests[^1].TimeRequests).Kind);
+        Assert.Equal("Доступ на сегодня открыт.", Texts.RequestResult(Assert.Single(_engine.UnnotifiedResults(Misha))));
+    }
+
+    [Fact]
     public void Ipc_roundtrip_omits_nulls()
     {
         var line = Ipc.Serialize(new IpcMessage

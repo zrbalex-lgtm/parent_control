@@ -5,20 +5,26 @@ namespace ParentControl.Tray;
 /// <summary>"Ask for more time": optional reason + one tap on 15/30/60.</summary>
 internal sealed class RequestPanel : FlowLayoutPanel
 {
+    private readonly float _scale;
+    private readonly Label _title;
     private readonly TextBox _reason;
     private readonly FlowLayoutPanel _buttons;
     private readonly Label _pending;
+    private bool _unlockMode;
 
-    public event Action<int, string?>? Submitted;
+    /// <summary>(minutes, reason, kind)</summary>
+    public event Action<int, string?, string>? Submitted;
 
     public RequestPanel(float scale = 1f)
     {
+        _scale = scale;
         FlowDirection = FlowDirection.TopDown;
         WrapContents = false;
         AutoSize = true;
         BackColor = Color.Transparent;
 
-        Controls.Add(Theme.MakeLabel("Попросить ещё времени", 12 * scale, Theme.Text, FontStyle.Bold));
+        _title = Theme.MakeLabel("Попросить ещё времени", 12 * scale, Theme.Text, FontStyle.Bold);
+        Controls.Add(_title);
         _reason = new TextBox
         {
             Width = (int)(320 * scale),
@@ -33,28 +39,57 @@ internal sealed class RequestPanel : FlowLayoutPanel
         Controls.Add(_reason);
 
         _buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = Color.Transparent, Margin = new Padding(0, 0, 0, 4) };
-        foreach (var m in new[] { 15, 30, 60 })
-        {
-            var b = Theme.MakeButton($"+{m} мин", primary: m == 30);
-            b.Font = Theme.UiFont(11 * scale, FontStyle.Bold);
-            b.Click += (_, _) => Submitted?.Invoke(m, string.IsNullOrWhiteSpace(_reason.Text) ? null : _reason.Text.Trim());
-            _buttons.Controls.Add(b);
-        }
         Controls.Add(_buttons);
+        BuildButtons();
 
         _pending = Theme.MakeLabel("", 12 * scale, Theme.Warn);
         _pending.Visible = false;
         Controls.Add(_pending);
     }
 
+    /// <summary>Unlock mode asks to open today's access instead of asking for minutes.</summary>
+    public bool UnlockMode
+    {
+        get => _unlockMode;
+        set
+        {
+            if (_unlockMode == value) return;
+            _unlockMode = value;
+            BuildButtons();
+        }
+    }
+
+    private void BuildButtons()
+    {
+        _title.Text = _unlockMode ? "Попросить открыть доступ" : "Попросить ещё времени";
+        _reason.PlaceholderText = _unlockMode ? "Например: уроки сделал (необязательно)" : "Зачем? (необязательно)";
+        _buttons.Controls.Clear();
+        string? Reason() => string.IsNullOrWhiteSpace(_reason.Text) ? null : _reason.Text.Trim();
+        if (_unlockMode)
+        {
+            var b = Theme.MakeButton("Попросить открыть доступ", primary: true);
+            b.Font = Theme.UiFont(11 * _scale, FontStyle.Bold);
+            b.Click += (_, _) => Submitted?.Invoke(0, Reason(), RequestKinds.Unlock);
+            _buttons.Controls.Add(b);
+            return;
+        }
+        foreach (var m in new[] { 15, 30, 60 })
+        {
+            var b = Theme.MakeButton($"+{m} мин", primary: m == 30);
+            b.Font = Theme.UiFont(11 * _scale, FontStyle.Bold);
+            b.Click += (_, _) => Submitted?.Invoke(m, Reason(), RequestKinds.Time);
+            _buttons.Controls.Add(b);
+        }
+    }
+
     /// <summary>Shows either the request controls or "waiting for an answer".</summary>
-    public void SetOpenRequest(int? minutes)
+    public void SetOpenRequest(int? minutes, string? kind)
     {
         var open = minutes is not null;
         _reason.Visible = !open;
         _buttons.Visible = !open;
         _pending.Visible = open;
-        if (open) _pending.Text = $"Запрос на {minutes} мин отправлен — ждём ответа.";
+        if (open) _pending.Text = Texts.OpenRequest(minutes!.Value, kind ?? RequestKinds.Time);
     }
 }
 
@@ -69,7 +104,7 @@ internal sealed class StatusForm : Form
     private readonly Label _link = Theme.MakeLabel("", 10, Theme.Muted);
     private readonly RequestPanel _request = new();
 
-    public event Action<int, string?>? RequestSubmitted;
+    public event Action<int, string?, string>? RequestSubmitted;
 
     public StatusForm()
     {
@@ -94,7 +129,7 @@ internal sealed class StatusForm : Form
         _remaining.Margin = new Padding(0, 0, 0, 0);
         layout.Controls.AddRange([_name, _remaining, _remainingBy, _spent, _window, _link]);
         _request.Margin = new Padding(0, 12, 0, 0);
-        _request.Submitted += (m, r) => RequestSubmitted?.Invoke(m, r);
+        _request.Submitted += (m, r, k) => RequestSubmitted?.Invoke(m, r, k);
         layout.Controls.Add(_request);
         Controls.Add(layout);
 
@@ -124,7 +159,12 @@ internal sealed class StatusForm : Form
         }
 
         _name.Text = s.ChildName ?? "";
-        _remaining.Text = s.Lock is not null ? "Время вышло" : Texts.Remaining(s.RemainingMinutes);
+        _remaining.Text = s.Lock switch
+        {
+            null => Texts.Remaining(s.RemainingMinutes),
+            nameof(LockReason.NotUnlocked) => "Доступ закрыт",
+            _ => "Время вышло",
+        };
         _remaining.ForeColor = s.Lock is not null ? Theme.Danger : Theme.ForRemaining(s.RemainingMinutes);
         _remainingBy.Text = s.Lock is not null ? "" : Texts.RemainingBy(s.RemainingBy, s.WindowTo);
         _remainingBy.Visible = _remainingBy.Text.Length > 0;
@@ -140,7 +180,8 @@ internal sealed class StatusForm : Form
             : "Нет интернета — время считается на этом компьютере";
         _link.ForeColor = connected && s.Online ? Theme.Muted : Theme.Warn;
         _request.Visible = true;
-        _request.SetOpenRequest(s.RequestMinutes);
+        _request.UnlockMode = s.Lock == nameof(LockReason.NotUnlocked);
+        _request.SetOpenRequest(s.RequestMinutes, s.RequestKind);
     }
 
     public void ShowNearTray()
@@ -218,9 +259,9 @@ internal sealed class LockForm : OverlayForm
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     private int _seconds;
 
-    public event Action<int, string?>? RequestSubmitted;
+    public event Action<int, string?, string>? RequestSubmitted;
 
-    public LockForm(string text, int seconds, int? openRequestMinutes)
+    public LockForm(string text, int seconds, bool unlockMode, int? openRequestMinutes, string? openRequestKind)
     {
         _seconds = seconds;
         Body.Controls.Add(Theme.MakeLabel(text, 26, Theme.Text, FontStyle.Bold));
@@ -228,11 +269,12 @@ internal sealed class LockForm : OverlayForm
         Body.Controls.Add(_countdown);
 
         _request.Margin = new Padding(0, 24, 0, 0);
-        _request.SetOpenRequest(openRequestMinutes);
-        _request.Submitted += (m, r) =>
+        _request.UnlockMode = unlockMode;
+        _request.SetOpenRequest(openRequestMinutes, openRequestKind);
+        _request.Submitted += (m, r, k) =>
         {
-            _request.SetOpenRequest(m);
-            RequestSubmitted?.Invoke(m, r);
+            _request.SetOpenRequest(m, k);
+            RequestSubmitted?.Invoke(m, r, k);
         };
         Body.Controls.Add(_request);
 
@@ -248,9 +290,9 @@ internal sealed class LockForm : OverlayForm
         if (_seconds-- <= 0) Close();
     }
 
-    public void SetOpenRequest(int? minutes)
+    public void SetOpenRequest(int? minutes, string? kind)
     {
-        if (minutes is not null) _request.SetOpenRequest(minutes);
+        if (minutes is not null) _request.SetOpenRequest(minutes, kind);
     }
 }
 

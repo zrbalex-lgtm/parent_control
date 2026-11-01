@@ -22,7 +22,7 @@ public enum SyncOutcome { NotRegistered, Ok, Offline, Unauthorized }
 public enum RequestTimeResult { Queued, AlreadyPending, NotAllowed }
 
 /// <summary>A child's request as the PC sees it: still uploading, or waiting on the server.</summary>
-public sealed record OpenRequest(int Minutes, bool Uploaded);
+public sealed record OpenRequest(int Minutes, bool Uploaded, string Kind = RequestKinds.Time);
 
 /// <summary>
 /// Platform-neutral core of the guard: records one heartbeat per minute,
@@ -172,26 +172,27 @@ public sealed class GuardEngine
     // ---------------- time requests ----------------
 
     /// <summary>Queues a request for more minutes for the child bound to <paramref name="sid"/>.</summary>
-    public RequestTimeResult RequestTime(string? sid, int minutes, string? reason)
+    public RequestTimeResult RequestTime(string? sid, int minutes, string? reason, string kind = RequestKinds.Time)
     {
+        kind = kind == RequestKinds.Unlock ? RequestKinds.Unlock : RequestKinds.Time;
         var child = ChildOf(sid);
         if (child is null || sid is null) return RequestTimeResult.NotAllowed;
         if (OpenRequestFor(child.Value) is not null) return RequestTimeResult.AlreadyPending;
 
         reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         if (reason is { Length: > 200 }) reason = reason[..200];
-        State.PendingRequests.Add(new TimeRequestOut(Guid.NewGuid(), sid, Math.Clamp(minutes, 5, 240), reason));
+        State.PendingRequests.Add(new TimeRequestOut(Guid.NewGuid(), sid, Math.Clamp(minutes, 5, 240), reason, kind));
         _stateStore.Save(State);
-        _log.LogInformation("Time request queued: {Minutes} min for child {Child}", minutes, child);
+        _log.LogInformation("Request queued ({Kind}): {Minutes} min for child {Child}", kind, minutes, child);
         return RequestTimeResult.Queued;
     }
 
     public OpenRequest? OpenRequestFor(Guid childId)
     {
         var local = State.PendingRequests.FirstOrDefault(r => ChildOf(r.Sid) == childId);
-        if (local is not null) return new OpenRequest(local.Minutes, Uploaded: false);
+        if (local is not null) return new OpenRequest(local.Minutes, Uploaded: false, local.Kind);
         var server = State.LastSync?.Requests.FirstOrDefault(r => r.ChildId == childId && r.Status == RequestStatuses.Pending);
-        return server is null ? null : new OpenRequest(server.Minutes, Uploaded: true);
+        return server is null ? null : new OpenRequest(server.Minutes, Uploaded: true, server.Kind);
     }
 
     /// <summary>Decided requests of the child whose result has not been shown yet.</summary>

@@ -204,6 +204,66 @@ public class PolicyTests : IDisposable
         Assert.Equal(LockReason.Limit, _policy.Evaluate("S-1").Lock);
     }
 
+    [Fact]
+    public void Locked_by_default_until_access_is_opened()
+    {
+        Server(tomorrow: null);
+        _api.Respond = _ => new SyncResponse
+        {
+            Accounts = [new AccountInfo("S-1", "misha", Misha)],
+            Children = [new ChildInfo(Misha, "Миша",
+            [
+                new DayInfo(Nov1, 120, 0, "15:00", "20:00", 0, RequiresUnlock: true, Unlocked: false),
+                new DayInfo(Nov2, 120, 0, "15:00", "20:00", 0, RequiresUnlock: true, Unlocked: false),
+            ])],
+        };
+        _engine.SyncAsync(default).GetAwaiter().GetResult();
+        var d = _policy.Evaluate("S-1");
+        Assert.Equal(LockReason.NotUnlocked, d.Lock);
+        Assert.Null(d.RemainingMinutes);
+    }
+
+    [Fact]
+    public void Opened_access_falls_back_to_schedule()
+    {
+        _api.Respond = _ => new SyncResponse
+        {
+            Accounts = [new AccountInfo("S-1", "misha", Misha)],
+            Children = [new ChildInfo(Misha, "Миша",
+                [new DayInfo(Nov1, 120, 0, "15:00", "20:00", 120, RequiresUnlock: true, Unlocked: true)])],
+        };
+        _engine.SyncAsync(default).GetAwaiter().GetResult();
+        Assert.Equal(LockReason.Limit, _policy.Evaluate("S-1").Lock); // opened, but the limit still applies
+    }
+
+    [Fact]
+    public void Window_wins_over_not_unlocked()
+    {
+        _time.UtcNow = new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero); // 09:00 local, before 15:00
+        _api.Respond = _ => new SyncResponse
+        {
+            Accounts = [new AccountInfo("S-1", "misha", Misha)],
+            Children = [new ChildInfo(Misha, "Миша",
+                [new DayInfo(Nov1, 120, 0, "15:00", "20:00", 0, RequiresUnlock: true, Unlocked: false)])],
+        };
+        _engine.SyncAsync(default).GetAwaiter().GetResult();
+        Assert.Equal(LockReason.Window, _policy.Evaluate("S-1").Lock);
+    }
+
+    [Fact]
+    public void Offline_stale_day_does_not_carry_yesterdays_unlock()
+    {
+        _api.Respond = _ => new SyncResponse
+        {
+            Accounts = [new AccountInfo("S-1", "misha", Misha)],
+            Children = [new ChildInfo(Misha, "Миша",
+                [new DayInfo(Nov2, null, 0, "00:00", "24:00", 0, RequiresUnlock: true, Unlocked: true)])],
+        };
+        _engine.SyncAsync(default).GetAwaiter().GetResult();
+        _time.UtcNow = new DateTimeOffset(2026, 11, 4, 11, 0, 0, TimeSpan.Zero);
+        Assert.Equal(LockReason.NotUnlocked, _policy.Evaluate("S-1").Lock);
+    }
+
     [Theory]
     [InlineData("15:00", 900)]
     [InlineData("24:00", 1440)]

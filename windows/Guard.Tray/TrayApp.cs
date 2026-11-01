@@ -112,7 +112,7 @@ internal sealed class TrayContext : ApplicationContext
             case IpcTypes.Status:
                 _status = m.Status;
                 if (_status?.Lock is null) CloseLock(); // time was added or lock lifted
-                _lockForm?.SetOpenRequest(_status?.RequestMinutes);
+                _lockForm?.SetOpenRequest(_status?.RequestMinutes, _status?.RequestKind);
                 Refresh();
                 break;
 
@@ -134,7 +134,9 @@ internal sealed class TrayContext : ApplicationContext
             case IpcTypes.Lock:
                 _finalForm?.Close();
                 CloseLock();
-                _lockForm = new LockForm(m.Text ?? Texts.Title, m.Seconds ?? 20, _status?.RequestMinutes);
+                _lockForm = new LockForm(m.Text ?? Texts.Title, m.Seconds ?? 20,
+                    unlockMode: m.LockReason == nameof(LockReason.NotUnlocked),
+                    _status?.RequestMinutes, _status?.RequestKind);
                 _lockForm.RequestSubmitted += RequestTime;
                 _lockForm.Show();
                 break;
@@ -165,14 +167,14 @@ internal sealed class TrayContext : ApplicationContext
         form.Show();
     }
 
-    private void RequestTime(int minutes, string? reason)
+    private void RequestTime(int minutes, string? reason, string kind)
     {
         if (!_pipe.Connected)
         {
             _icon.ShowBalloonTip(5000, Texts.Title, "Нет связи со службой — попробуй через минуту.", ToolTipIcon.Warning);
             return;
         }
-        _pipe.Send(new IpcMessage { Type = IpcTypes.RequestTime, Minutes = minutes, Reason = reason });
+        _pipe.Send(new IpcMessage { Type = IpcTypes.RequestTime, Minutes = minutes, Reason = reason, Kind = kind });
     }
 
     private void CloseLock()

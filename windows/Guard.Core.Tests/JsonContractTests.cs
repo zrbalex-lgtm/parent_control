@@ -61,7 +61,8 @@ public class JsonContractTests
               {"local_date": "2026-11-01", "limit_minutes": 120, "bonus_minutes": 30,
                "window_from": "15:00", "window_to": "20:00", "spent_minutes": 47},
               {"local_date": "2026-11-02", "limit_minutes": null, "bonus_minutes": 0,
-               "window_from": "00:00", "window_to": "24:00", "spent_minutes": 0}
+               "window_from": "00:00", "window_to": "24:00", "spent_minutes": 0,
+               "requires_unlock": true, "unlocked": false}
             ]}
           ],
           "locks": [{"id": 12, "child_id": "11111111-1111-1111-1111-111111111111",
@@ -83,6 +84,8 @@ public class JsonContractTests
         Assert.Equal(47, day.SpentMinutes);
         Assert.Null(r.Children[0].Days[1].LimitMinutes);
         Assert.Equal("24:00", r.Children[0].Days[1].WindowTo);
+        Assert.False(r.Children[0].Days[0].RequiresUnlock); // absent in older payloads
+        Assert.True(r.Children[0].Days[1].RequiresUnlock);
         Assert.Null(r.Locks[0].LockUntil);
         Assert.Equal("Ужинать!", r.Messages[0].Text);
     }

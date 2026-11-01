@@ -63,6 +63,8 @@ public sealed record IpcMessage
     // request_time
     public int? Minutes { get; init; }
     public string? Reason { get; init; }
+    /// <summary>"time" or "unlock" (request_time); defaults to "time".</summary>
+    public string? Kind { get; init; }
 
     // status
     public TrayStatus? Status { get; init; }
@@ -72,6 +74,8 @@ public sealed record IpcMessage
 
     // lock / notice
     public string? Text { get; init; }
+    /// <summary>Lock reason name (e.g. "NotUnlocked" asks for access instead of minutes).</summary>
+    public string? LockReason { get; init; }
     public int? Seconds { get; init; }
     public bool? CanRequest { get; init; }
 
@@ -96,5 +100,6 @@ public sealed record TrayStatus
     public bool StaleSettings { get; init; }
     /// <summary>Open request: minutes asked; null if none.</summary>
     public int? RequestMinutes { get; init; }
+    public string? RequestKind { get; init; }
     public bool RequestUploaded { get; init; }
 }

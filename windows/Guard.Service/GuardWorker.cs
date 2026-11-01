@@ -134,7 +134,7 @@ public sealed class GuardWorker(
             {
                 case IpcTypes.RequestTime:
                 {
-                    var result = engine.RequestTime(sid, m.Minutes ?? 30, m.Reason);
+                    var result = engine.RequestTime(sid, m.Minutes ?? 30, m.Reason, m.Kind ?? RequestKinds.Time);
                     var text = result switch
                     {
                         RequestTimeResult.Queued => Texts.RequestSent,
@@ -188,6 +188,7 @@ public sealed class GuardWorker(
             Online = engine.State.LastSyncError is null && engine.State.LastSyncAt is { } at && now - at < TimeSpan.FromMinutes(3),
             StaleSettings = d.StaleSettings,
             RequestMinutes = open?.Minutes,
+            RequestKind = open?.Kind,
             RequestUploaded = open?.Uploaded ?? false,
         };
         var msg = new IpcMessage { Type = IpcTypes.Status, Status = status };

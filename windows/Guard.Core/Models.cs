@@ -67,7 +67,14 @@ public sealed record SyncRequest
 }
 
 /// <summary>A child's request for more minutes, created on this PC.</summary>
-public sealed record TimeRequestOut(Guid ClientId, string Sid, int Minutes, string? Reason);
+public sealed record TimeRequestOut(Guid ClientId, string Sid, int Minutes, string? Reason, string Kind = RequestKinds.Time);
+
+public static class RequestKinds
+{
+    public const string Time = "time";
+    /// <summary>Open today's access while "locked by default" is on.</summary>
+    public const string Unlock = "unlock";
+}
 
 public sealed record SyncResponse
 {
@@ -96,7 +103,8 @@ public sealed record RequestInfo(
     int? GrantedMinutes,
     string Status,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? DecidedAt);
+    DateTimeOffset? DecidedAt,
+    string Kind = RequestKinds.Time);
 
 public sealed record AccountInfo(string Sid, string? User, Guid? ChildId);
 
@@ -108,7 +116,9 @@ public sealed record DayInfo(
     int BonusMinutes,
     string WindowFrom,
     string WindowTo,
-    int SpentMinutes);
+    int SpentMinutes,
+    bool RequiresUnlock = false,
+    bool Unlocked = false);
 
 public sealed record LockInfo(long Id, Guid ChildId, DateTimeOffset LockFrom, DateTimeOffset? LockUntil);
 
