@@ -285,3 +285,21 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .grant .btn { white-space: nowrap; }
 @media (min-width: 560px) { .grant { grid-template-columns: 1fr auto; } }
 .ok-text { color: var(--ok); }
+
+/* ---------- settings ---------- */
+.setting { display: flex; align-items: center; gap: 16px; padding: 8px 0 4px; }
+.setting-label { flex: 1; margin: 0; display: flex; flex-direction: column; gap: 4px; color: var(--text); font-size: 1rem; }
+.switch {
+  appearance: none; -webkit-appearance: none; flex: none;
+  width: 52px; min-height: 0; height: 32px; padding: 0; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line); position: relative; cursor: pointer;
+  transition: background .15s;
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--muted); transition: transform .15s, background .15s;
+}
+.switch:checked { background: var(--accent); border-color: var(--accent); }
+.switch:checked::after { transform: translateX(20px); background: #fff; }
+.warn-text { color: var(--warn); }
+.access-row .btn { min-width: 96px; }

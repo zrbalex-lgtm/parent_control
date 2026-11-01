@@ -1,5 +1,5 @@
 // App entry: auth gate, hash router, bottom navigation.
-import { h, toast, busy, humanError } from './ui.js';
+import { h, toast, busy, humanError, modal } from './ui.js';
 
 const ROUTES = {
   home: { title: 'Главная', icon: '⌂', load: () => import('./views/home.js') },
@@ -72,12 +72,45 @@ function renderShell() {
         h('span', {}, r.title))));
   const header = h('header', { class: 'topbar' },
     h('h1', { id: 'page-title' }, ''),
+    h('button', { class: 'icon-btn', 'aria-label': 'Настройки', onclick: openSettings }, '⚙'),
     h('button', {
       class: 'btn ghost small',
       onclick: (e) => busy(e.currentTarget, () => api.signOut()),
     }, 'Выйти'));
   const main = h('main', { id: 'view', tabindex: '-1' });
   root.replaceChildren(h('div', { class: 'shell' }, header, main, nav));
+}
+
+// ---------------- settings ----------------
+async function openSettings() {
+  let settings;
+  try {
+    settings = await api.getSettings();
+  } catch (err) {
+    toast(humanError(err), 'error');
+    return;
+  }
+  const changed = await modal('Настройки', (close) => {
+    const toggle = h('input', {
+      type: 'checkbox', id: 'locked-default', class: 'switch', role: 'switch',
+      checked: !!settings.locked_by_default,
+      onchange: () => busy(toggle, async () => {
+        const on = toggle.checked;
+        await api.setLockedByDefault(on);
+        toast(on ? 'Закрыт по умолчанию: включено' : 'Закрыт по умолчанию: выключено', 'ok');
+        close(true);
+      }),
+    });
+    return [
+      h('div', { class: 'setting' },
+        h('label', { for: 'locked-default', class: 'setting-label' },
+          h('span', { class: 'strong' }, 'Закрыт по умолчанию'),
+          h('span', { class: 'muted small' },
+            'Каждый день компьютер закрыт, пока не откроешь доступ ребёнку на «Главной» (или не одобришь его запрос). Дальше — по расписанию.')),
+        toggle),
+    ];
+  });
+  if (changed) renderRoute();
 }
 
 async function renderRoute() {

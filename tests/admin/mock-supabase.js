@@ -20,12 +20,14 @@ const store = (window.__store = {
   device_accounts: [],
   time_requests: [],
   bonuses: [],
+  settings: [{ id: 1, locked_by_default: false }],
+  day_unlocks: [],
 });
 store.device_accounts.push(
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-1', windows_user: 'misha', child_id: null, last_seen_at: iso(60e3) },
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-2', windows_user: 'papa', child_id: null, last_seen_at: iso(7200e3) });
 
-const PK = { children: ['id'], devices: ['id'], device_accounts: ['id'],
+const PK = { settings: ['id'], day_unlocks: ['child_id', 'local_date'], children: ['id'], devices: ['id'], device_accounts: ['id'],
              schedule_weekly: ['child_id', 'weekday'], schedule_overrides: ['child_id', 'local_date'] };
 const TIME_COLS = ['window_from', 'window_to'];
 const toPgTime = (r) => {
@@ -140,12 +142,21 @@ export function createClient() {
       await new Promise((r) => setTimeout(r, 40));
       window.__calls = (window.__calls || []).concat([{ rpc: name, args }]);
       if (name === 'is_admin') return { data: true, error: null };
+      if (name === 'admin_dashboard') {
+        const locked = store.settings[0].locked_by_default;
+        return { data: { children: store.children.map((c) => ({
+          ...c, requires_unlock: locked,
+          unlocked: store.day_unlocks.some((u) => u.child_id === c.id && u.local_date === args.p_local_date),
+        })) }, error: null };
+      }
       if (name === 'admin_decide_request') {
         const r = store.time_requests.find((x) => x.id === args.p_id);
         if (!r || r.status !== 'pending') return { data: null, error: { message: 'request already decided' } };
         r.status = args.p_approve ? 'approved' : 'denied';
         r.decided_at = new Date().toISOString();
-        if (args.p_approve) {
+        if (args.p_approve && r.kind === 'unlock') {
+          store.day_unlocks.push({ child_id: r.child_id, local_date: args.p_local_date });
+        } else if (args.p_approve) {
           r.granted_minutes = args.p_minutes ?? r.minutes;
           store.bonuses.push({ child_id: r.child_id, local_date: args.p_local_date, minutes: r.granted_minutes });
         }

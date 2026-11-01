@@ -273,5 +273,42 @@ select pg_temp.check((select status from time_requests where client_id = 'dddddd
 select pg_temp.check((select sum(minutes) from bonuses where local_date = current_date) = 50, 'deny adds no bonus');
 reset request.jwt.claim.sub;
 
+-- ---------------------------------------------------------------------
+-- Locked by default (005)
+-- ---------------------------------------------------------------------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select pg_temp.check((select not locked_by_default from settings), 'locked by default is off initially');
+update settings set locked_by_default = true;
+reset request.jwt.claim.sub;
+
+set role anon;
+select device_sync(:'dev1', :'sec1b', '0.3.0', now(), current_date, '[]') as r \gset
+select pg_temp.check((:'r'::jsonb#>>'{children,0,days,0,requires_unlock}')::boolean
+                     and not (:'r'::jsonb#>>'{children,0,days,0,unlocked}')::boolean, 'today requires unlock, not unlocked');
+select pg_temp.check((:'r'::jsonb#>>'{children,0,days,1,requires_unlock}')::boolean
+                     and not (:'r'::jsonb#>>'{children,0,days,1,unlocked}')::boolean, 'tomorrow locked again until opened');
+
+select device_sync(:'dev1', :'sec1b', '0.3.0', now(), current_date, '[]', '{}',
+  '[{"client_id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","sid":"S-1-5-21-misha","kind":"unlock","reason":"уроки сделал"}]') as r \gset
+select pg_temp.check(:'r'::jsonb#>>'{requests,-1,kind}' = 'unlock'
+                     and :'r'::jsonb#>>'{requests,-1,status}' = 'pending', 'unlock request created');
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select admin_decide_request(id, true, null, current_date) from time_requests where client_id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+select pg_temp.check((select count(*) from day_unlocks where local_date = current_date) = 1, 'approval opens access');
+select pg_temp.check((select sum(minutes) from bonuses where local_date = current_date) = 50, 'unlock adds no bonus');
+select admin_dashboard(current_date) as dash \gset
+select pg_temp.check((:'dash'::jsonb#>>'{children,0,unlocked}')::boolean, 'dashboard shows unlocked');
+reset request.jwt.claim.sub;
+
+set role anon;
+select device_sync(:'dev1', :'sec1b', '0.3.0', now(), current_date, '[]') as r \gset
+select pg_temp.check((:'r'::jsonb#>>'{children,0,days,0,unlocked}')::boolean, 'PC sees access opened');
+select pg_temp.check(:'r'::jsonb#>>'{requests,-1,status}' = 'approved', 'unlock request approved');
+select pg_temp.expect_error($$update parent_control.settings set locked_by_default = false$$, '42501', 'PC cannot change settings');
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

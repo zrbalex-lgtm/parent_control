@@ -152,6 +152,36 @@ if (await page.locator('main').evaluate((m) => /\bnull\b|undefined/.test(m.inner
 step('requests approved and denied');
 await page.screenshot({ path: `${shots}/09-requests-after.png`, fullPage: true });
 
+// ---------- locked by default ----------
+await page.getByRole('button', { name: 'Настройки' }).click();
+await page.getByRole('switch').check();
+await page.getByText('Закрыт по умолчанию: включено').waitFor();
+await page.getByRole('heading', { name: 'Доступ сегодня' }).waitFor();
+await page.locator('.access-row', { hasText: 'Миша' }).getByText('Доступ закрыт').waitFor();
+await page.evaluate(() => {
+  const s = window.__store;
+  const anna = s.children.find((c) => c.name === 'Анна');
+  s.time_requests.push({ id: 3, child_id: anna.id, device_id: s.devices[0].id, kind: 'unlock', minutes: 5,
+    reason: 'уроки сделала', status: 'pending', created_at: new Date().toISOString() });
+});
+await page.getByRole('button', { name: 'Обновить' }).click();
+await page.getByText('Анна просит открыть доступ').waitFor();
+await page.screenshot({ path: `${shots}/10-access.png`, fullPage: true });
+await page.locator('.access-row', { hasText: 'Миша' }).getByRole('button', { name: 'Открыть' }).click();
+await page.getByText('Миша: доступ открыт').waitFor();
+await page.locator('li.request', { hasText: 'Анна' }).getByRole('button', { name: 'Открыть доступ' }).click();
+await page.getByText('Анна: доступ открыт').waitFor();
+await page.locator('.access-row', { hasText: 'Анна' }).getByText('Доступ открыт').waitFor();
+if ((await store()).day_unlocks.length !== 2) fail('two day unlocks');
+await page.locator('.access-row', { hasText: 'Миша' }).getByRole('button', { name: 'Закрыть' }).click();
+await page.locator('.access-row', { hasText: 'Миша' }).getByText('Доступ закрыт').waitFor();
+await page.screenshot({ path: `${shots}/11-access-after.png`, fullPage: true });
+await page.getByRole('button', { name: 'Настройки' }).click();
+await page.getByRole('switch').uncheck();
+await page.getByText('Закрыт по умолчанию: выключено').waitFor();
+if (await page.getByRole('heading', { name: 'Доступ сегодня' }).count()) fail('access card hidden when off');
+step('locked by default: toggle, open/close, unlock request');
+
 // ---------- schedule ----------
 await page.getByRole('link', { name: /Расписание/ }).click();
 await page.getByRole('heading', { name: 'Каждую неделю' }).waitFor();
