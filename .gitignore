@@ -1,5 +1,4 @@
-# Local configs with secrets — commit only *.example
-admin/js/config.js
+# Local configs with secrets — commit only *.example (admin config holds only the public anon key)
 windows/**/appsettings.local.json
 windows/installer/config.json
 
