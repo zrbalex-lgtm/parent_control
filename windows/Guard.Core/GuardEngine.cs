@@ -9,7 +9,8 @@ public sealed record SessionSample(
     string? User = null,
     string? Exe = null,
     string? Product = null,
-    string? Title = null);
+    string? Title = null,
+    uint? SessionId = null);
 
 public interface ISessionProbe
 {

@@ -26,7 +26,8 @@ public sealed class WindowsSessionProbe(ILogger<WindowsSessionProbe> log) : ISes
         return new SessionSample(
             locked ? HeartbeatStates.Locked : HeartbeatStates.Active,
             ResolveSid(domain, user),
-            user);
+            user,
+            SessionId: sessionId);
     }
 
     public uint ConsoleSessionId => Native.WTSGetActiveConsoleSessionId();

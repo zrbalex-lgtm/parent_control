@@ -108,6 +108,9 @@ namespace ParentControl.Service
                 sp.GetRequiredService<TimeProvider>(),
                 sp.GetRequiredService<ILogger<GuardEngine>>(),
                 Version));
+            builder.Services.AddSingleton(sp => new Policy(sp.GetRequiredService<GuardEngine>(), sp.GetRequiredService<TimeProvider>()));
+            builder.Services.AddSingleton<ISessionControl, WindowsSessionControl>();
+            builder.Services.AddSingleton<Enforcer>();
             builder.Services.AddHostedService<GuardWorker>();
 
             await builder.Build().RunAsync();
@@ -186,7 +189,21 @@ namespace ParentControl.Service
                     var limit = d?.LimitMinutes is { } l ? $"{l + d.BonusMinutes} min" : "no limit";
                     Console.WriteLine($"  {c.Name,-20} spent {engine.SpentMinutes(c.ChildId, today)} min, limit {limit}, window {d?.WindowFrom}-{d?.WindowTo}");
                 }
+                foreach (var l in sync.Locks)
+                {
+                    var child = sync.Children.FirstOrDefault(c => c.ChildId == l.ChildId)?.Name;
+                    Console.WriteLine($"  Lock #{l.Id} for {child}: from {l.LockFrom.ToLocalTime():HH:mm} until {(l.LockUntil is { } u ? u.ToLocalTime().ToString("HH:mm") : "cancelled")}");
+                }
             }
+
+            var sample = new WindowsSessionProbe(NullLogger<WindowsSessionProbe>.Instance).Sample();
+            var decision = new Policy(engine, TimeProvider.System).Evaluate(sample.Sid);
+            Console.WriteLine($"Console now:  {sample.User ?? "-"} ({sample.State})");
+            Console.WriteLine(!decision.Restricted
+                ? "Decision:     not limited"
+                : decision.Lock is { } reason
+                    ? $"Decision:     LOCK ({reason})"
+                    : $"Decision:     allowed, {(decision.RemainingMinutes is { } left ? $"{left} min left" : "no end today")}");
             return 0;
         }
 
