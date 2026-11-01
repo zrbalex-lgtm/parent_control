@@ -9,7 +9,9 @@ public class EnforcerTests
     {
         public List<string> Messages { get; } = [];
         public List<uint> Disconnects { get; } = [];
-        public void ShowMessage(uint sessionId, string title, string text, int timeoutSeconds) => Messages.Add(text);
+        public void Warn(uint sessionId, int minutesLeft) => Messages.Add(Texts.Warn(minutesLeft));
+        public void ShowLock(uint sessionId, LockReason reason, Decision d, TimeSpan grace) =>
+            Messages.Add(Texts.Lock(reason, d.WindowFrom, d.WindowTo));
         public bool Disconnect(uint sessionId) { Disconnects.Add(sessionId); return true; }
     }
 
@@ -78,17 +80,20 @@ public class EnforcerTests
     }
 
     [Fact]
-    public void Warns_once_at_five_and_once_at_one()
+    public void Warns_once_at_ten_five_and_one()
     {
+        _enf.Apply(Active(), Left(20));
         _enf.Apply(Active(), Left(10));
+        _enf.Apply(Active(), Left(9));
         _enf.Apply(Active(), Left(5));
         _enf.Apply(Active(), Left(5));
         _enf.Apply(Active(), Left(4));
         _enf.Apply(Active(), Left(1));
         _enf.Apply(Active(), Left(1));
-        Assert.Equal(2, _ctl.Messages.Count);
-        Assert.Contains("5 мин", _ctl.Messages[0]);
-        Assert.Contains("1 минута", _ctl.Messages[1]);
+        Assert.Equal(3, _ctl.Messages.Count);
+        Assert.Contains("10 мин", _ctl.Messages[0]);
+        Assert.Contains("5 мин", _ctl.Messages[1]);
+        Assert.Contains("1 минута", _ctl.Messages[2]);
     }
 
     [Fact]
@@ -106,6 +111,16 @@ public class EnforcerTests
         _enf.Apply(Active(), Left(35)); // +30 from parent
         _enf.Apply(Active(), Left(5));
         Assert.Equal(2, _ctl.Messages.Count);
+    }
+
+    [Fact]
+    public void Idle_session_is_still_locked()
+    {
+        var idle = new SessionSample(HeartbeatStates.Idle, "S-1", "misha", SessionId: 2);
+        _enf.Apply(idle, Locked());
+        _time.Advance(Enforcer.Grace);
+        _enf.Apply(idle, Locked());
+        Assert.Equal(new uint[] { 2 }, _ctl.Disconnects);
     }
 
     [Fact]

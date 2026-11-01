@@ -2,4 +2,5 @@
   <Project Path="Guard.Core/Guard.Core.csproj" />
   <Project Path="Guard.Core.Tests/Guard.Core.Tests.csproj" />
   <Project Path="Guard.Service/Guard.Service.csproj" />
+  <Project Path="Guard.Tray/Guard.Tray.csproj" />
 </Solution>

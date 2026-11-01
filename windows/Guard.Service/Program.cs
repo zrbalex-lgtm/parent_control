@@ -23,6 +23,7 @@ namespace ParentControl.Service
               ParentControl.Guard.exe register CODE   register this PC with a one-time code from the admin app
               ParentControl.Guard.exe status          show registration, sync and today's usage
               ParentControl.Guard.exe probe           print what the guard sees on the console session
+              ParentControl.Guard.exe tray            tray app for the signed-in user (started by the service)
             """;
 
         public static async Task<int> Main(string[] args)
@@ -33,6 +34,9 @@ namespace ParentControl.Service
                 Console.WriteLine(Usage);
                 return 0;
             }
+
+            // The tray runs as the signed-in (non-admin) user and needs no config or data folder.
+            if (command == "tray") return ParentControl.Tray.TrayApp.Run();
 
             var options = LoadOptions();
             var data = new DataDirectory(options.DataDir);
@@ -109,7 +113,11 @@ namespace ParentControl.Service
                 sp.GetRequiredService<ILogger<GuardEngine>>(),
                 Version));
             builder.Services.AddSingleton(sp => new Policy(sp.GetRequiredService<GuardEngine>(), sp.GetRequiredService<TimeProvider>()));
-            builder.Services.AddSingleton<ISessionControl, WindowsSessionControl>();
+            builder.Services.AddSingleton<TrayHub>();
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<TrayHub>());
+            builder.Services.AddSingleton<TrayLauncher>();
+            builder.Services.AddSingleton<WindowsSessionControl>();
+            builder.Services.AddSingleton<ISessionControl>(sp => sp.GetRequiredService<WindowsSessionControl>());
             builder.Services.AddSingleton<Enforcer>();
             builder.Services.AddHostedService<GuardWorker>();
 

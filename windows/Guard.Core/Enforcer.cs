@@ -2,25 +2,28 @@ using Microsoft.Extensions.Logging;
 
 namespace ParentControl.Core;
 
-/// <summary>Platform actions on a Windows session.</summary>
+/// <summary>Platform actions on a Windows session (tray UI when connected, system dialogs otherwise).</summary>
 public interface ISessionControl
 {
-    /// <summary>Shows a non-blocking message box in the session.</summary>
-    void ShowMessage(uint sessionId, string title, string text, int timeoutSeconds);
+    /// <summary>"N minutes left" warning; <paramref name="minutesLeft"/> ≤ 1 is the final one.</summary>
+    void Warn(uint sessionId, int minutesLeft);
+
+    /// <summary>Explains the lock; the session is disconnected after <paramref name="grace"/>.</summary>
+    void ShowLock(uint sessionId, LockReason reason, Decision decision, TimeSpan grace);
 
     /// <summary>Sends the session to the sign-in screen; programs keep running.</summary>
     bool Disconnect(uint sessionId);
 }
 
 /// <summary>
-/// Turns decisions into actions: a warning before the end, then a short
-/// explanation and a disconnect after <see cref="Grace"/>. Called every few seconds.
+/// Turns decisions into actions: warnings before the end, then an explanation
+/// and a disconnect after <see cref="Grace"/>. Called every few seconds.
 /// </summary>
 public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger<Enforcer> log)
 {
-    public static readonly TimeSpan Grace = TimeSpan.FromSeconds(10);
-    public static readonly int[] WarnAt = [5, 1];
-    private const string Title = "Экранное время";
+    /// <summary>Long enough to read the reason and tap "ask for more time".</summary>
+    public static readonly TimeSpan Grace = TimeSpan.FromSeconds(20);
+    public static readonly int[] WarnAt = [10, 5, 1];
 
     private uint? _pendingSession;
     private DateTimeOffset _disconnectAt;
@@ -28,7 +31,8 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
 
     public void Apply(SessionSample sample, Decision decision)
     {
-        if (sample.State != HeartbeatStates.Active || sample.SessionId is not { } session || !decision.Restricted)
+        // Idle still counts as screen time, so it is enforced the same way.
+        if (!HeartbeatStates.IsCounted(sample.State) || sample.SessionId is not { } session || !decision.Restricted)
         {
             _pendingSession = null;
             return;
@@ -39,7 +43,7 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
             var now = time.GetUtcNow();
             if (_pendingSession != session)
             {
-                control.ShowMessage(session, Title, LockText(reason, decision), (int)Grace.TotalSeconds + 5);
+                control.ShowLock(session, reason, decision, Grace);
                 _pendingSession = session;
                 _disconnectAt = now + Grace;
                 log.LogInformation("Locking {Child} ({Reason}) in {Grace}s", decision.ChildName, reason, Grace.TotalSeconds);
@@ -73,7 +77,7 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
             var k = $"{key}|{t}";
             if (left <= t)
             {
-                if (_warned.Add(k)) due = true; // mark every crossed threshold, show one popup
+                if (_warned.Add(k)) due = true; // mark every crossed threshold, show one warning
             }
             else
             {
@@ -82,20 +86,7 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
         }
         if (!due) return;
 
-        var text = left <= 1
-            ? "Осталась 1 минута! Сохрани игру — скоро выход на экран входа."
-            : $"Осталось {left} мин. Сохрани игру заранее.";
-        control.ShowMessage(session, Title, text, 30);
+        control.Warn(session, left);
         log.LogInformation("Warned {Child}: {Left} min left", d.ChildName, left);
     }
-
-    internal static string LockText(LockReason reason, Decision d) => reason switch
-    {
-        LockReason.Limit =>
-            "Время за компьютером на сегодня закончилось.\nСейчас будет выход на экран входа. Программы останутся открытыми.",
-        LockReason.Window =>
-            $"Сейчас компьютер недоступен.\nРазрешённое время: {d.WindowFrom}–{d.WindowTo}.",
-        _ =>
-            "Родитель заблокировал компьютер.\nСейчас будет выход на экран входа.",
-    };
 }

@@ -63,7 +63,11 @@ public sealed record SyncRequest
     [JsonPropertyName("p_local_date")] public required DateOnly LocalDate { get; init; }
     [JsonPropertyName("p_heartbeats")] public required IReadOnlyList<Heartbeat> Heartbeats { get; init; }
     [JsonPropertyName("p_acked_commands")] public required IReadOnlyList<long> AckedCommands { get; init; }
+    [JsonPropertyName("p_time_requests")] public IReadOnlyList<TimeRequestOut> TimeRequests { get; init; } = [];
 }
+
+/// <summary>A child's request for more minutes, created on this PC.</summary>
+public sealed record TimeRequestOut(Guid ClientId, string Sid, int Minutes, string? Reason);
 
 public sealed record SyncResponse
 {
@@ -74,7 +78,25 @@ public sealed record SyncResponse
     public List<ChildInfo> Children { get; init; } = [];
     public List<LockInfo> Locks { get; init; } = [];
     public List<MessageInfo> Messages { get; init; } = [];
+    public List<RequestInfo> Requests { get; init; } = [];
 }
+
+public static class RequestStatuses
+{
+    public const string Pending = "pending";
+    public const string Approved = "approved";
+    public const string Denied = "denied";
+}
+
+public sealed record RequestInfo(
+    long Id,
+    Guid ClientId,
+    Guid ChildId,
+    int Minutes,
+    int? GrantedMinutes,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DecidedAt);
 
 public sealed record AccountInfo(string Sid, string? User, Guid? ChildId);
 

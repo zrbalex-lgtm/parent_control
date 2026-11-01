@@ -19,6 +19,11 @@ public interface ISessionProbe
 
 public enum SyncOutcome { NotRegistered, Ok, Offline, Unauthorized }
 
+public enum RequestTimeResult { Queued, AlreadyPending, NotAllowed }
+
+/// <summary>A child's request as the PC sees it: still uploading, or waiting on the server.</summary>
+public sealed record OpenRequest(int Minutes, bool Uploaded);
+
 /// <summary>
 /// Platform-neutral core of the guard: records one heartbeat per minute,
 /// keeps the local minute log, and syncs with the server.
@@ -109,6 +114,7 @@ public sealed class GuardEngine
             {
                 var batch = _queue.Peek(BatchSize);
                 var acks = State.PendingAcks.ToList();
+                var requests = State.PendingRequests.ToList();
                 var request = new SyncRequest
                 {
                     DeviceId = creds.DeviceId,
@@ -118,10 +124,12 @@ public sealed class GuardEngine
                     LocalDate = LocalToday,
                     Heartbeats = batch,
                     AckedCommands = acks,
+                    TimeRequests = requests,
                 };
                 last = await _api.SyncAsync(request, ct);
                 _queue.Remove(batch);
                 State.PendingAcks.RemoveAll(acks.Contains);
+                State.PendingRequests.RemoveAll(requests.Contains);
                 if (_queue.Count == 0 || batch.Count < BatchSize) break;
             }
 
@@ -159,6 +167,68 @@ public sealed class GuardEngine
         {
             _stateStore.Save(State);
         }
+    }
+
+    // ---------------- time requests ----------------
+
+    /// <summary>Queues a request for more minutes for the child bound to <paramref name="sid"/>.</summary>
+    public RequestTimeResult RequestTime(string? sid, int minutes, string? reason)
+    {
+        var child = ChildOf(sid);
+        if (child is null || sid is null) return RequestTimeResult.NotAllowed;
+        if (OpenRequestFor(child.Value) is not null) return RequestTimeResult.AlreadyPending;
+
+        reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        if (reason is { Length: > 200 }) reason = reason[..200];
+        State.PendingRequests.Add(new TimeRequestOut(Guid.NewGuid(), sid, Math.Clamp(minutes, 5, 240), reason));
+        _stateStore.Save(State);
+        _log.LogInformation("Time request queued: {Minutes} min for child {Child}", minutes, child);
+        return RequestTimeResult.Queued;
+    }
+
+    public OpenRequest? OpenRequestFor(Guid childId)
+    {
+        var local = State.PendingRequests.FirstOrDefault(r => ChildOf(r.Sid) == childId);
+        if (local is not null) return new OpenRequest(local.Minutes, Uploaded: false);
+        var server = State.LastSync?.Requests.FirstOrDefault(r => r.ChildId == childId && r.Status == RequestStatuses.Pending);
+        return server is null ? null : new OpenRequest(server.Minutes, Uploaded: true);
+    }
+
+    /// <summary>Decided requests of the child whose result has not been shown yet.</summary>
+    public IReadOnlyList<RequestInfo> UnnotifiedResults(Guid childId) =>
+        (State.LastSync?.Requests ?? new List<RequestInfo>())
+            .Where(r => r.ChildId == childId && r.Status != RequestStatuses.Pending && !State.NotifiedRequests.Contains(r.Id))
+            .ToList();
+
+    public void MarkRequestNotified(long id)
+    {
+        if (!State.NotifiedRequests.Add(id)) return;
+        // Server keeps decided requests for 24h; drop ids it no longer sends.
+        var live = (State.LastSync?.Requests ?? new List<RequestInfo>()).Select(r => r.Id).ToHashSet();
+        State.NotifiedRequests.RemoveWhere(x => x != id && !live.Contains(x));
+        _stateStore.Save(State);
+    }
+
+    // ---------------- admin messages ----------------
+
+    public IReadOnlyList<MessageInfo> UnshownMessages(Guid childId) =>
+        (State.LastSync?.Messages ?? new List<MessageInfo>())
+            .Where(m => m.ChildId == childId && !State.ShownMessages.Contains(m.Id))
+            .ToList();
+
+    /// <summary>Marks a message as shown and acknowledges it to the server on the next sync.</summary>
+    public void MarkMessageShown(long id)
+    {
+        if (!State.ShownMessages.Add(id)) return;
+        if (!State.PendingAcks.Contains(id)) State.PendingAcks.Add(id);
+        if (State.ShownMessages.Count > 200)
+        {
+            foreach (var old in State.ShownMessages.Order().Take(State.ShownMessages.Count - 200).ToList())
+            {
+                State.ShownMessages.Remove(old);
+            }
+        }
+        _stateStore.Save(State);
     }
 
     // ---------------- queries used by enforcement and status ----------------

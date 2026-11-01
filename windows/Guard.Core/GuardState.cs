@@ -20,6 +20,15 @@ public sealed class GuardState
     /// <summary>Executed commands to acknowledge on the next sync.</summary>
     public List<long> PendingAcks { get; set; } = [];
 
+    /// <summary>Time requests waiting to be uploaded.</summary>
+    public List<TimeRequestOut> PendingRequests { get; set; } = [];
+
+    /// <summary>Decided requests whose result was already shown to the child.</summary>
+    public HashSet<long> NotifiedRequests { get; set; } = [];
+
+    /// <summary>Admin messages already shown on this PC.</summary>
+    public HashSet<long> ShownMessages { get; set; } = [];
+
     public void AddUsage(DateOnly date, string sid, DateTimeOffset minute)
     {
         if (!Usage.TryGetValue(date, out var bySid)) Usage[date] = bySid = [];
