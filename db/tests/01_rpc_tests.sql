@@ -229,5 +229,49 @@ select pg_temp.expect_error(
 select device_id as reg1b, device_secret as sec1b from device_register(:'code1b', 'MISHA-PC', '0.2.0') \gset
 select pg_temp.check(:'reg1b' = :'dev1', 're-registration keeps device id');
 
+-- ---------------------------------------------------------------------
+-- Time requests
+-- ---------------------------------------------------------------------
+select device_sync(:'dev1', :'sec1b', '0.2.0', now(), current_date, '[]', '{}',
+  '[{"client_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","sid":"S-1-5-21-misha","minutes":30,"reason":"доиграть"}]') as r \gset
+select pg_temp.check(jsonb_array_length(:'r'::jsonb->'requests') = 1
+                     and :'r'::jsonb#>>'{requests,0,status}' = 'pending', 'request created as pending');
+
+-- resend + a second request while one is pending + unknown sid + garbage
+select device_sync(:'dev1', :'sec1b', '0.2.0', now(), current_date, '[]', '{}',
+  '[{"client_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","sid":"S-1-5-21-misha","minutes":30},
+    {"client_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","sid":"S-1-5-21-misha","minutes":60},
+    {"client_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","sid":"S-unknown","minutes":60},
+    {"client_id":"not-a-uuid","sid":"S-1-5-21-misha","minutes":"x"}]') as r \gset
+select pg_temp.check(jsonb_array_length(:'r'::jsonb->'requests') = 1, 'one pending per child, resend idempotent, junk ignored');
+select (:'r'::jsonb#>>'{requests,0,id}')::bigint as req1 \gset
+
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';
+select pg_temp.expect_error(format('select admin_decide_request(%s, true)', :req1), '42501', 'non-admin cannot decide');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select admin_decide_request(:req1, true, 20, current_date);
+select pg_temp.expect_error(format('select admin_decide_request(%s, false)', :req1), '22023', 'cannot decide twice');
+
+reset request.jwt.claim.sub;
+set role anon;
+select device_sync(:'dev1', :'sec1b', '0.2.0', now(), current_date, '[]') as r \gset
+select pg_temp.check(:'r'::jsonb#>>'{requests,0,status}' = 'approved'
+                     and (:'r'::jsonb#>>'{requests,0,granted_minutes}')::int = 20, 'approval visible to PC');
+select pg_temp.check((:'r'::jsonb#>>'{children,0,days,0,bonus_minutes}')::int = 50, 'approval adds bonus (30 + 20)');
+
+-- new request after approval, then deny
+select device_sync(:'dev1', :'sec1b', '0.2.0', now(), current_date, '[]', '{}',
+  '[{"client_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd","sid":"S-1-5-21-misha","minutes":15}]') as r \gset
+select pg_temp.check(jsonb_array_length(:'r'::jsonb->'requests') = 2, 'second request allowed after decision');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select admin_decide_request(id, false) from time_requests where client_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+select pg_temp.check((select status from time_requests where client_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd') = 'denied', 'deny');
+select pg_temp.check((select sum(minutes) from bonuses where local_date = current_date) = 50, 'deny adds no bonus');
+reset request.jwt.claim.sub;
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

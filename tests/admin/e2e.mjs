@@ -52,8 +52,11 @@ await page.screenshot({ path: `${shots}/01-login.png` });
 
 await page.getByLabel('Пароль').fill('secret');
 await page.getByRole('button', { name: 'Войти' }).click();
+await page.getByRole('heading', { name: 'Главная' }).waitFor();
+await page.getByText('Новых запросов нет.').waitFor();
+step('login lands on home with no requests');
+await page.getByRole('link', { name: /Устройства/ }).click();
 await page.getByRole('heading', { name: 'Устройства' }).waitFor();
-step('login lands on devices');
 
 // ---------- devices before children ----------
 await page.getByText('Онлайн').waitFor();
@@ -114,6 +117,34 @@ await page.getByText('Отключён', { exact: true }).first().waitFor();
 if ((await store()).devices[0].is_enabled !== false) fail('device disabled');
 step('device disabled via menu + confirm');
 await page.screenshot({ path: `${shots}/05-devices-after.png`, fullPage: true });
+
+// ---------- time requests ----------
+await page.evaluate(() => {
+  const s = window.__store;
+  const misha = s.children.find((c) => c.name === 'Миша');
+  const anna = s.children.find((c) => c.name === 'Анна');
+  const ago = (m) => new Date(Date.now() - m * 60e3).toISOString();
+  s.time_requests.push(
+    { id: 1, child_id: misha.id, device_id: s.devices[0].id, minutes: 30, reason: 'доиграть катку', status: 'pending', created_at: ago(2) },
+    { id: 2, child_id: anna.id, device_id: s.devices[0].id, minutes: 20, reason: null, status: 'pending', created_at: ago(1) });
+});
+await page.getByRole('link', { name: /Главная/ }).click();
+await page.getByText('Миша просит 30 мин').waitFor();
+await page.getByText('«доиграть катку»').waitFor();
+await page.screenshot({ path: `${shots}/08-requests.png`, fullPage: true });
+await page.locator('li.request', { hasText: 'Миша' }).getByRole('button', { name: '+30' }).click();
+await page.getByText('Миша: добавлено 30 мин').waitFor();
+await page.locator('li.request', { hasText: 'Анна' }).getByRole('button', { name: 'Отклонить' }).click();
+await page.getByText('Новых запросов нет.').waitFor();
+await page.getByText('добавлено 30').waitFor();
+{
+  const s = await store();
+  if (s.bonuses.length !== 1 || s.bonuses[0].minutes !== 30) fail('approve creates bonus');
+  if (s.time_requests.find((r) => r.id === 2).status !== 'denied') fail('deny');
+}
+if (await page.locator('main').evaluate((m) => /\bnull\b|undefined/.test(m.innerText))) fail('stray null/undefined text');
+step('requests approved and denied');
+await page.screenshot({ path: `${shots}/09-requests-after.png`, fullPage: true });
 
 // ---------- schedule ----------
 await page.getByRole('link', { name: /Расписание/ }).click();
@@ -180,7 +211,7 @@ await page.setViewportSize({ width: 360, height: 780 });
 await page.getByLabel('Пароль').fill('secret');
 await page.getByLabel('Email').fill('admin@pc.home');
 await page.getByRole('button', { name: 'Войти' }).click();
-for (const tab of ['Дети', 'Расписание', 'Устройства']) {
+for (const tab of ['Главная', 'Дети', 'Расписание', 'Устройства']) {
   await page.getByRole('link', { name: new RegExp(tab) }).click();
   await page.waitForTimeout(400);
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

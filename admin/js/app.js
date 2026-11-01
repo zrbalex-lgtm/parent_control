@@ -2,11 +2,12 @@
 import { h, toast, busy, humanError } from './ui.js';
 
 const ROUTES = {
+  home: { title: 'Главная', icon: '⌂', load: () => import('./views/home.js') },
   children: { title: 'Дети', icon: '☺', load: () => import('./views/children.js') },
   schedule: { title: 'Расписание', icon: '◷', load: () => import('./views/schedule.js') },
   devices: { title: 'Устройства', icon: '▭', load: () => import('./views/devices.js') },
 };
-const DEFAULT_ROUTE = 'devices';
+const DEFAULT_ROUTE = 'home';
 
 const root = document.getElementById('app');
 let api;

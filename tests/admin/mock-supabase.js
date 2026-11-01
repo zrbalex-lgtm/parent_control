@@ -18,6 +18,8 @@ const store = (window.__store = {
       client_version: null, last_seen_at: null, clock_skew_sec: null, created_at: iso(3600e3) },
   ],
   device_accounts: [],
+  time_requests: [],
+  bonuses: [],
 });
 store.device_accounts.push(
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-1', windows_user: 'misha', child_id: null, last_seen_at: iso(60e3) },
@@ -45,8 +47,9 @@ class Query {
   constructor(table) { this.table = table; this.op = 'select'; this.filters = []; this.orders = []; }
   select() { return this; }
   eq(c, v) { this.filters.push((r) => r[c] === v); return this; }
-  gte(c, v) { this.filters.push((r) => r[c] >= v); return this; }
-  order(c) { this.orders.push(c); return this; }
+  gte(c, v) { this.filters.push((r) => r[c] != null && r[c] >= v); return this; }
+  neq(c, v) { this.filters.push((r) => r[c] !== v); return this; }
+  order(c, opts = {}) { this.orders.push({ c, desc: opts.ascending === false }); return this; }
   insert(rows) { this.op = 'insert'; this.payload = [].concat(rows); return this; }
   update(patch) { this.op = 'update'; this.payload = patch; return this; }
   delete() { this.op = 'delete'; return this; }
@@ -67,8 +70,8 @@ class Query {
     switch (this.op) {
       case 'select': {
         let out = rows.filter(match).map((r) => structuredClone(r));
-        for (const c of [...this.orders].reverse()) {
-          out.sort((a, b) => String(a[c] ?? '').localeCompare(String(b[c] ?? ''), 'ru', { numeric: true }));
+        for (const { c, desc } of [...this.orders].reverse()) {
+          out.sort((a, b) => (desc ? -1 : 1) * String(a[c] ?? '').localeCompare(String(b[c] ?? ''), 'ru', { numeric: true }));
         }
         return { data: out, error: null };
       }
@@ -137,6 +140,17 @@ export function createClient() {
       await new Promise((r) => setTimeout(r, 40));
       window.__calls = (window.__calls || []).concat([{ rpc: name, args }]);
       if (name === 'is_admin') return { data: true, error: null };
+      if (name === 'admin_decide_request') {
+        const r = store.time_requests.find((x) => x.id === args.p_id);
+        if (!r || r.status !== 'pending') return { data: null, error: { message: 'request already decided' } };
+        r.status = args.p_approve ? 'approved' : 'denied';
+        r.decided_at = new Date().toISOString();
+        if (args.p_approve) {
+          r.granted_minutes = args.p_minutes ?? r.minutes;
+          store.bonuses.push({ child_id: r.child_id, local_date: args.p_local_date, minutes: r.granted_minutes });
+        }
+        return { data: null, error: null };
+      }
       if (name === 'admin_create_device') {
         const id = uid();
         store.devices.push({ id, name: args.p_name, machine_name: null, is_enabled: true, registered_at: null,

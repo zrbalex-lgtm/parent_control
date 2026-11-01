@@ -132,6 +132,24 @@ export const api = {
   async deleteDevice(id) {
     unwrap(await sb.from('devices').delete().eq('id', id));
   },
+  // ---------------- time requests ----------------
+  // Pending ones plus everything decided in the last 24 hours.
+  async listRequests() {
+    const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+    const [pending, recent] = await Promise.all([
+      sb.from('time_requests').select('id,child_id,device_id,minutes,reason,status,granted_minutes,created_at,decided_at')
+        .eq('status', 'pending').order('created_at').then(unwrap),
+      sb.from('time_requests').select('id,child_id,device_id,minutes,reason,status,granted_minutes,created_at,decided_at')
+        .neq('status', 'pending').gte('decided_at', since).order('decided_at', { ascending: false }).then(unwrap),
+    ]);
+    return { pending, recent };
+  },
+  async decideRequest(id, approve, minutes, localDateStr) {
+    unwrap(await sb.rpc('admin_decide_request', {
+      p_id: id, p_approve: approve, p_minutes: approve ? minutes : null, p_local_date: localDateStr,
+    }));
+  },
+
   async setAccountChild(accountId, childId) {
     unwrap(await sb.from('device_accounts').update({ child_id: childId }).eq('id', accountId));
   },

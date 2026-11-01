@@ -8,11 +8,12 @@ Supabase project (one schema per home project; Auth is shared).
 | `migrations/001_schema.sql` | Tables, views, RLS |
 | `migrations/003_tighten_grants.sql` | Function grants after advisor run |
 | `migrations/002_rpc.sql` | RPC: `admin_create_device`, `admin_reset_device_code`, `admin_dashboard`, `device_register`, `device_sync` |
+| `migrations/004_time_requests.sql` | `time_requests`, `device_sync` v2 (`p_time_requests`), `admin_decide_request` |
 | `tests/` | Local test run against plain PostgreSQL (with a Supabase stub) |
 
 ## Applying to Supabase
 
-1. Run the migrations in order: `001_schema.sql`, `002_rpc.sql`, `003_tighten_grants.sql`.
+1. Run the migrations in order: `001` … `004`.
 2. Settings → API (Data API) → **Exposed schemas**: add `parent_control`.
 3. Auth → Providers → Email: **disable sign-ups** (shared by all home projects).
 4. Create the parent user (Auth → Users → Add user), then:
@@ -68,3 +69,10 @@ Response:
 - Messages repeat until their id is sent back in `p_acked_commands`.
 - `device_enabled: false` → the service stops enforcing.
 - Errors: SQLSTATE `28000` = bad secret / code.
+
+### Time requests (since 004)
+
+`device_sync(..., p_time_requests jsonb)` — items `{"client_id": "<uuid>", "sid": "S-1-…", "minutes": 30, "reason": "…"}`.
+Idempotent by `client_id`; at most one pending request per child; unknown/unbound SIDs ignored.
+Response gets `"requests": [{"id", "client_id", "child_id", "minutes", "granted_minutes", "status", "created_at", "decided_at"}]`
+(pending + last 24h). Admin decides via `admin_decide_request(p_id, p_approve, p_minutes, p_local_date)`; approval inserts a bonus.
