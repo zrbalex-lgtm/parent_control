@@ -35,6 +35,43 @@ jobs:
           & publish/guard/ParentControl.Guard.exe probe
           if ($LASTEXITCODE -ne 0) { throw "probe failed: $LASTEXITCODE" }
 
+      - name: Add installer to the package
+        shell: pwsh
+        run: Copy-Item windows/installer/* publish/guard/ -Force
+
+      # End-to-end: install as a real service (no registration), update in place, uninstall.
+      - name: Installer test
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'pc-install'
+          & .\publish\guard\install.ps1 -NoRegister -NoPause -InstallDir $dir
+          if ($LASTEXITCODE) { throw "install failed: $LASTEXITCODE" }
+          Start-Sleep -Seconds 5
+          $svc = Get-Service ParentControlGuard
+          if ($svc.Status -ne 'Running') { throw "service not running: $($svc.Status)" }
+          if ($svc.StartType -ne 'Automatic') { throw "start type: $($svc.StartType)" }
+          $run = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run').ParentControlTray
+          if ($run -notlike '*ParentControl.Guard.exe" tray') { throw "run key: $run" }
+          $fail = & sc.exe qfailure ParentControlGuard | Out-String
+          if ($fail -notmatch 'RESTART') { throw "recovery not set: $fail" }
+          Write-Host 'install ok'
+
+          & .\publish\guard\install.ps1 -NoRegister -NoPause -InstallDir $dir
+          if ($LASTEXITCODE) { throw "update failed: $LASTEXITCODE" }
+          if ((Get-Service ParentControlGuard).Status -ne 'Running') { throw 'service not running after update' }
+          Write-Host 'update ok'
+
+          & "$dir\uninstall.ps1" -NoPause -RemoveData -InstallDir $dir
+          if ($LASTEXITCODE) { throw "uninstall failed: $LASTEXITCODE" }
+          if (Get-Service ParentControlGuard -ErrorAction SilentlyContinue) {
+            $s = Get-CimInstance Win32_Service -Filter "Name='ParentControlGuard'"
+            if ($s) { throw 'service still installed' }
+          }
+          if (Test-Path $dir) { throw 'install folder left' }
+          if ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run').ParentControlTray) { throw 'run key left' }
+          Write-Host 'uninstall ok'
+
       - uses: actions/upload-artifact@v4
         with:
           name: parent-control-guard-win-x64
