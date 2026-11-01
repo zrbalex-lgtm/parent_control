@@ -152,11 +152,15 @@ if (await page.locator('main').evaluate((m) => /\bnull\b|undefined/.test(m.inner
 step('requests approved and denied');
 await page.screenshot({ path: `${shots}/09-requests-after.png`, fullPage: true });
 
-// ---------- locked by default ----------
-await page.getByRole('button', { name: 'Настройки' }).click();
-await page.getByRole('switch').check();
-await page.getByText('Закрыт по умолчанию: включено').waitFor();
-await page.locator('.child-card[data-child="Миша"]').getByText('Доступ закрыт').waitFor();
+// ---------- locked by default (per child) ----------
+for (const name of ['Миша', 'Анна']) {
+  await page.getByRole('link', { name: /Дети/ }).click();
+  await page.getByRole('button', { name: `Изменить: ${name}` }).click();
+  await page.getByRole('switch').check();
+  await page.getByRole('button', { name: 'Сохранить' }).click();
+  await page.getByText(`${name} · закрыт по умолчанию`).waitFor();
+}
+await page.getByRole('link', { name: /Главная/ }).click();
 const mishaCard = page.locator('.child-card[data-child="Миша"]');
 const annaCard = page.locator('.child-card[data-child="Анна"]');
 await mishaCard.getByText('Доступ закрыт').waitFor();
@@ -177,11 +181,16 @@ await annaCard.getByText('Доступ открыт').waitFor();
 if ((await store()).day_unlocks.length !== 2) fail('two day unlocks');
 await mishaCard.getByRole('button', { name: 'Закрыть доступ' }).click();
 await mishaCard.getByText('Доступ закрыт').waitFor();
-await page.getByRole('button', { name: 'Настройки' }).click();
+await page.getByRole('link', { name: /Дети/ }).click();
+await page.getByRole('button', { name: 'Изменить: Анна' }).click();
 await page.getByRole('switch').uncheck();
-await page.getByText('Закрыт по умолчанию: выключено').waitFor();
-await mishaCard.getByRole('button', { name: /доступ/ }).waitFor({ state: 'detached' });
-step('locked by default: toggle, open/close, unlock request');
+await page.getByRole('button', { name: 'Сохранить' }).click();
+await page.getByText('Анна · закрыт по умолчанию').waitFor({ state: 'detached' });
+await page.getByRole('link', { name: /Главная/ }).click();
+await annaCard.waitFor();
+if (await annaCard.getByRole('button', { name: /доступ/ }).count()) fail('no access buttons when flag off');
+await mishaCard.getByRole('button', { name: 'Открыть доступ' }).waitFor();
+step('locked by default per child: toggle, open/close, unlock request');
 
 // ---------- dashboard quick actions ----------
 await mishaCard.getByText('Minecraft').waitFor();

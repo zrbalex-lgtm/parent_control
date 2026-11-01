@@ -42,13 +42,13 @@ export const api = {
   // ---------------- children ----------------
   async listChildren() {
     return unwrap(
-      await sb.from('children').select('id,name,color,avatar,sort_order')
+      await sb.from('children').select('id,name,color,avatar,sort_order,locked_by_default')
         .order('sort_order').order('name'));
   },
   async saveChild(child) {
     const row = {
       name: child.name, color: child.color, avatar: child.avatar || null,
-      sort_order: child.sort_order ?? 0,
+      sort_order: child.sort_order ?? 0, locked_by_default: !!child.locked_by_default,
     };
     if (child.id) {
       unwrap(await sb.from('children').update(row).eq('id', child.id));

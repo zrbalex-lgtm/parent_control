@@ -35,8 +35,8 @@ export async function render({ api }) {
 
   async function draw() {
     const today = localDate();
-    const [{ pending, recent }, devices, settings, dash] = await Promise.all([
-      api.listRequests(), api.listDevices(), api.getSettings(), api.dashboard(today),
+    const [{ pending, recent }, devices, dash] = await Promise.all([
+      api.listRequests(), api.listDevices(), api.dashboard(today),
     ]);
     const children = dash?.children || [];
     const childById = new Map(children.map((c) => [c.id, c]));
@@ -251,7 +251,7 @@ export async function render({ api }) {
         ? h('ul', { class: 'list' }, children.map(childCard))
         : h('div', { class: 'card empty' }, h('p', { class: 'muted' }, 'Добавь детей на вкладке «Дети».')),
       h('div', { class: 'refresh-row muted small' },
-        h('span', {}, `Обновлено в ${fmtTime(new Date())}${settings.locked_by_default ? ' · закрыт по умолчанию' : ''}`),
+        h('span', {}, `Обновлено в ${fmtTime(new Date())}`),
         h('button', { class: 'btn ghost small', onclick: (e) => busy(e.currentTarget, refresh) }, 'Обновить')),
       recent.length
         ? h('section', { class: 'card' },

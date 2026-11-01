@@ -9,11 +9,13 @@ Supabase project (one schema per home project; Auth is shared).
 | `migrations/003_tighten_grants.sql` | Function grants after advisor run |
 | `migrations/002_rpc.sql` | RPC: `admin_create_device`, `admin_reset_device_code`, `admin_dashboard`, `device_register`, `device_sync` |
 | `migrations/004_time_requests.sql` | `time_requests`, `device_sync` v2 (`p_time_requests`), `admin_decide_request` |
+| `migrations/005_locked_by_default.sql` | `day_unlocks`, unlock requests, `fn_day_access`, `settings` |
+| `migrations/006_child_locked_by_default.sql` | `children.locked_by_default` (per child) |
 | `tests/` | Local test run against plain PostgreSQL (with a Supabase stub) |
 
 ## Applying to Supabase
 
-1. Run the migrations in order: `001` … `004`.
+1. Run the migrations in order: `001` … `006`.
 2. Settings → API (Data API) → **Exposed schemas**: add `parent_control`.
 3. Auth → Providers → Email: **disable sign-ups** (shared by all home projects).
 4. Create the parent user (Auth → Users → Add user), then:

@@ -278,8 +278,8 @@ reset request.jwt.claim.sub;
 -- ---------------------------------------------------------------------
 set role authenticated;
 set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
-select pg_temp.check((select not locked_by_default from settings), 'locked by default is off initially');
-update settings set locked_by_default = true;
+select pg_temp.check((select not bool_or(locked_by_default) from children), 'locked by default is off initially');
+update children set locked_by_default = true;
 reset request.jwt.claim.sub;
 
 set role anon;
@@ -308,7 +308,25 @@ set role anon;
 select device_sync(:'dev1', :'sec1b', '0.3.0', now(), current_date, '[]') as r \gset
 select pg_temp.check((:'r'::jsonb#>>'{children,0,days,0,unlocked}')::boolean, 'PC sees access opened');
 select pg_temp.check(:'r'::jsonb#>>'{requests,-1,status}' = 'approved', 'unlock request approved');
-select pg_temp.expect_error($$update parent_control.settings set locked_by_default = false$$, '42501', 'PC cannot change settings');
+select pg_temp.expect_error($$update parent_control.children set locked_by_default = false$$, '42501', 'PC cannot change the flag');
+
+-- ---------------------------------------------------------------------
+-- Per-child locked by default (006)
+-- ---------------------------------------------------------------------
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+update children set locked_by_default = false where name = 'Миша';
+update settings set locked_by_default = true;  -- no longer read
+reset request.jwt.claim.sub;
+set role anon;
+select device_sync(:'dev1', :'sec1b', '0.4.0', now(), current_date, '[]') as r \gset
+select pg_temp.check(not (:'r'::jsonb#>>'{children,0,days,1,requires_unlock}')::boolean, 'child flag off: no unlock needed');
+reset role;
+update children set locked_by_default = true where name = 'Миша';
+set role anon;
+select device_sync(:'dev1', :'sec1b', '0.4.0', now(), current_date, '[]') as r \gset
+select pg_temp.check((:'r'::jsonb#>>'{children,0,days,1,requires_unlock}')::boolean, 'child flag on: unlock needed');
 
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

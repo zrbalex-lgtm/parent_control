@@ -13,7 +13,9 @@ export async function render({ api }) {
                     onclick: () => edit(c),
                     onkeydown: (e) => { if (e.key === 'Enter') edit(c); } },
             avatar(c),
-            h('span', { class: 'grow strong' }, c.name),
+            h('span', { class: 'grow' },
+              h('span', { class: 'strong' }, c.name),
+              c.locked_by_default ? h('span', { class: 'muted small' }, ' · закрыт по умолчанию') : null),
             h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'))))
       : h('div', { class: 'card empty' },
           h('p', {}, 'Пока никого нет.'),
@@ -26,7 +28,7 @@ export async function render({ api }) {
 
   async function edit(child) {
     const isNew = !child;
-    const draft = child ? { ...child } : { name: '', color: CHILD_COLORS[0], avatar: '', sort_order: 0 };
+    const draft = child ? { ...child } : { name: '', color: CHILD_COLORS[0], avatar: '', sort_order: 0, locked_by_default: false };
 
     const result = await modal(isNew ? 'Новый ребёнок' : 'Изменить', (close) => {
       const name = h('input', { id: 'child-name', value: draft.name, maxlength: '40', required: true, autocomplete: 'off' });
@@ -52,6 +54,10 @@ export async function render({ api }) {
         }));
       updatePreview();
 
+      const locked = h('input', {
+        type: 'checkbox', id: 'child-locked', class: 'switch', role: 'switch', checked: !!draft.locked_by_default,
+      });
+
       const err = h('p', { class: 'form-error', role: 'alert' });
       const save = h('button', { class: 'btn primary', type: 'submit' }, 'Сохранить');
       const form = h('form', {
@@ -59,7 +65,7 @@ export async function render({ api }) {
           e.preventDefault();
           if (!name.value.trim()) { err.textContent = 'Нужно имя'; return; }
           await busy(save, async () => {
-            await api.saveChild({ ...draft, name: name.value.trim(), avatar: emoji.value.trim() });
+            await api.saveChild({ ...draft, name: name.value.trim(), avatar: emoji.value.trim(), locked_by_default: locked.checked });
             close('saved');
           });
         },
@@ -68,6 +74,12 @@ export async function render({ api }) {
         h('label', { for: 'child-name' }, 'Имя'), name,
         h('label', { for: 'child-emoji' }, 'Эмодзи (необязательно)'), emoji,
         h('label', {}, 'Цвет'), swatches,
+        h('div', { class: 'setting' },
+          h('label', { for: 'child-locked', class: 'setting-label' },
+            h('span', { class: 'strong' }, 'Закрыт по умолчанию'),
+            h('span', { class: 'muted small' },
+              'Каждый день компьютер закрыт, пока не откроешь доступ на «Главной» (или не одобришь запрос). Дальше — по расписанию.')),
+          locked),
         err,
         h('div', { class: 'actions' },
           isNew ? null : h('button', { type: 'button', class: 'btn danger ghost', onclick: () => close('delete') }, 'Удалить'),

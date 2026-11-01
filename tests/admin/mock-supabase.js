@@ -146,7 +146,6 @@ export function createClient() {
       window.__calls = (window.__calls || []).concat([{ rpc: name, args }]);
       if (name === 'is_admin') return { data: true, error: null };
       if (name === 'admin_dashboard') {
-        const locked = store.settings[0].locked_by_default;
         const now = Date.now();
         const isoDow = ((new Date().getDay() + 6) % 7) + 1;
         return { data: { children: store.children.map((c, i) => {
@@ -159,7 +158,7 @@ export function createClient() {
             window_from: w ? w.window_from.slice(0, 5) : '00:00',
             window_to: w ? w.window_to.slice(0, 5) : '24:00',
             spent_minutes: i === 0 ? 100 : 20,
-            requires_unlock: locked,
+            requires_unlock: !!c.locked_by_default,
             unlocked: store.day_unlocks.some((u) => u.child_id === c.id && u.local_date === args.p_local_date),
             now: i === 0 ? { device_id: store.devices[0].id, device_name: store.devices[0].name, state: 'active',
                              app_group: 'Minecraft', exe: 'javaw.exe', title: 'Minecraft 1.21', minute_ts: new Date().toISOString() } : null,
