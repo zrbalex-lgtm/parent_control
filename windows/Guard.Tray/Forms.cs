@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using ParentControl.Core;
 
 namespace ParentControl.Tray;
@@ -48,6 +49,7 @@ internal sealed class RequestPanel : FlowLayoutPanel
     }
 
     /// <summary>Unlock mode asks to open today's access instead of asking for minutes.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool UnlockMode
     {
         get => _unlockMode;
