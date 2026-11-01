@@ -73,7 +73,18 @@ public class PolicyTests : IDisposable
         Assert.True(d.Restricted);
         Assert.Null(d.Lock);
         Assert.Equal(20, d.RemainingMinutes);
+        Assert.Equal(RemainingReasons.Limit, d.RemainingBy);
         Assert.Equal(120, d.AllowedMinutes);
+    }
+
+    [Fact]
+    public void Window_end_can_bind_before_limit()
+    {
+        _time.UtcNow = new DateTimeOffset(2026, 11, 1, 16, 22, 0, TimeSpan.Zero); // 17:22 local
+        Server(limit: 225, spent: 13, to: "20:00");
+        var d = _policy.Evaluate("S-1");
+        Assert.Equal(158, d.RemainingMinutes); // 2:38 to 20:00, not 3:32 by limit
+        Assert.Equal(RemainingReasons.Window, d.RemainingBy);
     }
 
     [Fact]

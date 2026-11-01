@@ -16,6 +16,11 @@ public static class TrayApp
         var exit = 0;
         var thread = new Thread(() =>
         {
+            // Never show the .NET crash dialog to the child: log and keep running.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (_, e) => Log(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, e) => Log(e.ExceptionObject as Exception);
+
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -23,8 +28,9 @@ public static class TrayApp
             {
                 Application.Run(new TrayContext());
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Log(ex);
                 exit = 1;
             }
         });
@@ -32,6 +38,24 @@ public static class TrayApp
         thread.Start();
         thread.Join();
         return exit;
+    }
+
+    /// <summary>%LOCALAPPDATA%\ParentControl\tray.log, trimmed when it grows past 1 MB.</summary>
+    internal static void Log(Exception? ex)
+    {
+        if (ex is null) return;
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ParentControl");
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "tray.log");
+            if (File.Exists(path) && new FileInfo(path).Length > 1_000_000) File.Delete(path);
+            File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {ex}\n\n");
+        }
+        catch (Exception)
+        {
+            // nothing sensible left to do
+        }
     }
 
     [DllImport("kernel32.dll")]
@@ -44,7 +68,7 @@ internal sealed class TrayContext : ApplicationContext
 
     private readonly NotifyIcon _icon;
     private readonly PipeClient _pipe;
-    private readonly StatusForm _statusForm = new();
+    private StatusForm _statusForm = new();
     private readonly System.Windows.Forms.Timer _activityTimer = new();
     private TrayStatus? _status;
     private bool _connected;
@@ -116,7 +140,14 @@ internal sealed class TrayContext : ApplicationContext
                 break;
 
             case IpcTypes.Notice when m.Text is not null:
-                ShowNotice(m.NoticeId ?? "info", m.Text);
+                if (m.NoticeId is null or "info")
+                {
+                    _icon.ShowBalloonTip(5000, Texts.Title, m.Text, ToolTipIcon.Info);
+                }
+                else
+                {
+                    ShowNotice(m.NoticeId, m.Text);
+                }
                 break;
         }
     }
@@ -138,7 +169,7 @@ internal sealed class TrayContext : ApplicationContext
     {
         if (!_pipe.Connected)
         {
-            ShowNotice("info", "Нет связи со службой — попробуй через минуту.");
+            _icon.ShowBalloonTip(5000, Texts.Title, "Нет связи со службой — попробуй через минуту.", ToolTipIcon.Warning);
             return;
         }
         _pipe.Send(new IpcMessage { Type = IpcTypes.RequestTime, Minutes = minutes, Reason = reason });
@@ -152,6 +183,11 @@ internal sealed class TrayContext : ApplicationContext
 
     private void ShowStatus()
     {
+        if (_statusForm.IsDisposed)
+        {
+            _statusForm = new StatusForm();
+            _statusForm.RequestSubmitted += RequestTime;
+        }
         _statusForm.Render(_status, _connected);
         _statusForm.ShowNearTray();
     }
@@ -171,7 +207,7 @@ internal sealed class TrayContext : ApplicationContext
             : $"Осталось {Texts.Remaining(_status.RemainingMinutes)}";
         _icon.Text = tip.Length > 63 ? tip[..63] : tip;
 
-        if (_statusForm.Visible) _statusForm.Render(_status, _connected);
+        if (!_statusForm.IsDisposed && _statusForm.Visible) _statusForm.Render(_status, _connected);
     }
 
     protected override void Dispose(bool disposing)

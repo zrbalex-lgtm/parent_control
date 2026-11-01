@@ -86,6 +86,8 @@ public sealed record TrayStatus
     public string? ChildName { get; init; }
     public string? Lock { get; init; }
     public int? RemainingMinutes { get; init; }
+    /// <summary>"limit", "window" or "lock": what ends the time first.</summary>
+    public string? RemainingBy { get; init; }
     public int SpentMinutes { get; init; }
     public int? AllowedMinutes { get; init; }
     public string? WindowFrom { get; init; }

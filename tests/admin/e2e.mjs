@@ -132,14 +132,20 @@ await page.getByRole('link', { name: /Главная/ }).click();
 await page.getByText('Миша просит 30 мин').waitFor();
 await page.getByText('«доиграть катку»').waitFor();
 await page.screenshot({ path: `${shots}/08-requests.png`, fullPage: true });
-await page.locator('li.request', { hasText: 'Миша' }).getByRole('button', { name: '+30' }).click();
-await page.getByText('Миша: добавлено 30 мин').waitFor();
+{
+  const card = page.locator('li.request', { hasText: 'Миша' });
+  await card.getByRole('button', { name: 'Подтвердить +30 мин' }).waitFor(); // defaults to the asked amount
+  await card.getByRole('button', { name: '60 минут' }).click();
+  await card.getByRole('button', { name: '15 минут' }).click();
+  await card.getByRole('button', { name: 'Подтвердить +15 мин' }).click();
+}
+await page.getByText('Миша: добавлено 15 мин').waitFor();
 await page.locator('li.request', { hasText: 'Анна' }).getByRole('button', { name: 'Отклонить' }).click();
 await page.getByText('Новых запросов нет.').waitFor();
-await page.getByText('добавлено 30').waitFor();
+await page.getByText('добавлено 15').waitFor();
 {
   const s = await store();
-  if (s.bonuses.length !== 1 || s.bonuses[0].minutes !== 30) fail('approve creates bonus');
+  if (s.bonuses.length !== 1 || s.bonuses[0].minutes !== 15) fail('approve creates bonus with chosen amount');
   if (s.time_requests.find((r) => r.id === 2).status !== 'denied') fail('deny');
 }
 if (await page.locator('main').evaluate((m) => /\bnull\b|undefined/.test(m.innerText))) fail('stray null/undefined text');

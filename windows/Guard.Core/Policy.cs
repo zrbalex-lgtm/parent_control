@@ -2,6 +2,13 @@ namespace ParentControl.Core;
 
 public enum LockReason { Window, Limit, Command }
 
+public static class RemainingReasons
+{
+    public const string Limit = "limit";
+    public const string Window = "window";
+    public const string Lock = "lock";
+}
+
 /// <summary>What the guard thinks about the current console user right now.</summary>
 public sealed record Decision
 {
@@ -15,6 +22,8 @@ public sealed record Decision
 
     /// <summary>Minutes until the next lock (limit, window end or scheduled command); null = no end.</summary>
     public int? RemainingMinutes { get; init; }
+    /// <summary>What ends the time first: "limit", "window" or "lock"; null if nothing.</summary>
+    public string? RemainingBy { get; init; }
     public int SpentMinutes { get; init; }
     /// <summary>Limit + bonus for today; null = no limit.</summary>
     public int? AllowedMinutes { get; init; }
@@ -75,11 +84,18 @@ public sealed class Policy(GuardEngine engine, TimeProvider time)
             : null;
 
         int? remaining = null;
+        string? remainingBy = null;
+        void Consider(int? minutes, string by)
+        {
+            if (minutes is null || (remaining is not null && minutes >= remaining)) return;
+            remaining = minutes;
+            remainingBy = by;
+        }
         if (reason is null)
         {
-            remaining = Min(remaining, allowed - spent);
-            if (to < 24 * 60) remaining = Min(remaining, (int)Math.Ceiling(to - minuteOfDay));
-            remaining = Min(remaining, nextLockIn);
+            Consider(allowed - spent, RemainingReasons.Limit);
+            if (to < 24 * 60) Consider((int)Math.Ceiling(to - minuteOfDay), RemainingReasons.Window);
+            Consider(nextLockIn, RemainingReasons.Lock);
         }
 
         return new Decision
@@ -89,6 +105,7 @@ public sealed class Policy(GuardEngine engine, TimeProvider time)
             ChildName = child?.Name,
             Lock = reason,
             RemainingMinutes = remaining,
+            RemainingBy = remainingBy,
             SpentMinutes = spent,
             AllowedMinutes = allowed,
             WindowFrom = day?.WindowFrom,

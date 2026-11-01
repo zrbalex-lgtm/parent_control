@@ -279,5 +279,9 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 /* ---------- requests ---------- */
 .request { display: flex; flex-direction: column; gap: 10px; }
 .request .reason { margin: 0; color: var(--text); font-style: italic; }
-.grant { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.amounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 8px; }
+.chip-toggle.amount { margin-left: 0; padding: 0 8px; font-size: .95rem; white-space: nowrap; }
+.grant { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.grant .btn { white-space: nowrap; }
+@media (min-width: 560px) { .grant { grid-template-columns: 1fr auto; } }
 .ok-text { color: var(--ok); }

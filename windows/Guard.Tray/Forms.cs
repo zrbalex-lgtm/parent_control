@@ -32,7 +32,7 @@ internal sealed class RequestPanel : FlowLayoutPanel
         };
         Controls.Add(_reason);
 
-        _buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = Color.Transparent, Margin = Padding.Empty };
+        _buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = Color.Transparent, Margin = new Padding(0, 0, 0, 4) };
         foreach (var m in new[] { 15, 30, 60 })
         {
             var b = Theme.MakeButton($"+{m} мин", primary: m == 30);
@@ -63,6 +63,7 @@ internal sealed class StatusForm : Form
 {
     private readonly Label _name = Theme.MakeLabel("", 12, Theme.Muted);
     private readonly Label _remaining = Theme.MakeLabel("", 30, Theme.Text, FontStyle.Bold);
+    private readonly Label _remainingBy = Theme.MakeLabel("", 10, Theme.Muted);
     private readonly Label _spent = Theme.MakeLabel("", 11, Theme.Muted);
     private readonly Label _window = Theme.MakeLabel("", 11, Theme.Muted);
     private readonly Label _link = Theme.MakeLabel("", 10, Theme.Muted);
@@ -80,22 +81,33 @@ internal sealed class StatusForm : Form
         BackColor = Theme.Surface;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        Padding = new Padding(18);
 
+        // Padding on the auto-sized panel (form padding is ignored by AutoSize forms).
         var layout = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             AutoSize = true,
             BackColor = Color.Transparent,
+            Padding = new Padding(20, 16, 20, 12),
         };
-        layout.Controls.AddRange([_name, _remaining, _spent, _window, _link]);
+        _remaining.Margin = new Padding(0, 0, 0, 0);
+        layout.Controls.AddRange([_name, _remaining, _remainingBy, _spent, _window, _link]);
         _request.Margin = new Padding(0, 12, 0, 0);
         _request.Submitted += (m, r) => RequestSubmitted?.Invoke(m, r);
         layout.Controls.Add(_request);
         Controls.Add(layout);
 
         Deactivate += (_, _) => Hide();
+        // The close box only hides the window; it is reused for every tray click.
+        FormClosing += (_, e) =>
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                Hide();
+            }
+        };
     }
 
     public void Render(TrayStatus? s, bool connected)
@@ -105,7 +117,7 @@ internal sealed class StatusForm : Form
             _name.Text = connected ? "Без ограничений" : "Нет связи со службой";
             _remaining.Text = "∞";
             _remaining.ForeColor = Theme.Muted;
-            _spent.Text = _window.Text = "";
+            _remainingBy.Text = _spent.Text = _window.Text = "";
             _link.Text = "";
             _request.Visible = false;
             return;
@@ -114,6 +126,8 @@ internal sealed class StatusForm : Form
         _name.Text = s.ChildName ?? "";
         _remaining.Text = s.Lock is not null ? "Время вышло" : Texts.Remaining(s.RemainingMinutes);
         _remaining.ForeColor = s.Lock is not null ? Theme.Danger : Theme.ForRemaining(s.RemainingMinutes);
+        _remainingBy.Text = s.Lock is not null ? "" : Texts.RemainingBy(s.RemainingBy, s.WindowTo);
+        _remainingBy.Visible = _remainingBy.Text.Length > 0;
         _spent.Text = s.AllowedMinutes is { } a
             ? $"Использовано {Texts.Remaining(s.SpentMinutes)} из {Texts.Remaining(a)}"
             : $"Использовано {Texts.Remaining(s.SpentMinutes)}";
@@ -254,7 +268,6 @@ internal sealed class NoticeForm : Form
         BackColor = Theme.Surface;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        Padding = new Padding(24);
 
         var body = new FlowLayoutPanel
         {
@@ -262,12 +275,16 @@ internal sealed class NoticeForm : Form
             WrapContents = false,
             AutoSize = true,
             BackColor = Color.Transparent,
+            Padding = new Padding(28, 22, 28, 20),
         };
         var label = Theme.MakeLabel(text, 14, Theme.Text);
         label.MaximumSize = new Size(480, 0);
+        label.MinimumSize = new Size(300, 0);
         body.Controls.Add(label);
         var ok = Theme.MakeButton("OK", primary: true);
+        ok.MinimumSize = new Size(96, 40);
         ok.Margin = new Padding(0, 16, 0, 0);
+        ok.Anchor = AnchorStyles.Right; // right-aligned within the column
         ok.Click += (_, _) => Close();
         body.Controls.Add(ok);
         AcceptButton = ok;

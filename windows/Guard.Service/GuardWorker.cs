@@ -180,6 +180,7 @@ public sealed class GuardWorker(
             ChildName = d.ChildName,
             Lock = d.Lock?.ToString(),
             RemainingMinutes = d.RemainingMinutes,
+            RemainingBy = d.RemainingBy,
             SpentMinutes = d.SpentMinutes,
             AllowedMinutes = d.AllowedMinutes,
             WindowFrom = d.WindowFrom,

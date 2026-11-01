@@ -25,6 +25,15 @@ public static class Texts
     public const string RequestSent = "Запрос отправлен — ждём ответа.";
     public const string RequestAlreadyPending = "Запрос уже отправлен — ждём ответа.";
 
+    /// <summary>Explains which rule the countdown follows.</summary>
+    public static string RemainingBy(string? by, string? windowTo) => by switch
+    {
+        RemainingReasons.Window => $"до конца разрешённого времени ({windowTo})",
+        RemainingReasons.Limit => "по дневному лимиту",
+        RemainingReasons.Lock => "до блокировки",
+        _ => "",
+    };
+
     public static string Remaining(int? minutes) => minutes is { } m
         ? $"{m / 60}:{m % 60:00}"
         : "без ограничений";

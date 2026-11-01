@@ -16,11 +16,34 @@ export async function render({ api }) {
     const pendingCard = (r) => {
       const child = childById.get(r.child_id) || { name: '?', color: '#9aa3b2' };
       const options = [...new Set([r.minutes, ...GRANT_OPTIONS])].sort((a, b) => a - b);
-      const approve = (minutes) => (e) => busy(e.currentTarget, async () => {
-        await api.decideRequest(r.id, true, minutes, localDate());
-        toast(`${child.name}: добавлено ${minutes} мин`, 'ok');
+      let chosen = r.minutes;
+
+      const confirm = h('button', { class: 'btn primary' }, '');
+      const chips = options.map((m) => h('button', {
+        class: 'chip-toggle amount', 'aria-pressed': String(m === chosen), 'aria-label': `${m} минут`,
+        onclick: () => {
+          chosen = m;
+          for (const c of chips) c.setAttribute('aria-pressed', String(c === chips[options.indexOf(m)]));
+          syncLabel();
+        },
+      }, `${m} мин`));
+      const syncLabel = () => { confirm.textContent = `Подтвердить +${chosen} мин`; };
+      syncLabel();
+
+      confirm.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+        await api.decideRequest(r.id, true, chosen, localDate());
+        toast(`${child.name}: добавлено ${chosen} мин`, 'ok');
         await refresh();
-      });
+      }));
+      const deny = h('button', {
+        class: 'btn danger ghost',
+        onclick: (e) => busy(e.currentTarget, async () => {
+          await api.decideRequest(r.id, false);
+          toast('Запрос отклонён', 'ok');
+          await refresh();
+        }),
+      }, 'Отклонить');
+
       return h('li', { class: 'card request' },
         h('div', { class: 'row' },
           avatar(child),
@@ -29,20 +52,8 @@ export async function render({ api }) {
             h('div', { class: 'muted small' },
               [fmtAgo(r.created_at), deviceName(r.device_id)].filter(Boolean).join(' · ')))),
         r.reason ? h('p', { class: 'reason' }, `«${r.reason}»`) : null,
-        h('div', { class: 'grant' },
-          options.map((m) => h('button', {
-            class: `btn ${m === r.minutes ? 'primary' : 'ghost'} small`,
-            onclick: approve(m),
-          }, `+${m}`)),
-          h('span', { class: 'grow' }),
-          h('button', {
-            class: 'btn danger ghost small',
-            onclick: (e) => busy(e.currentTarget, async () => {
-              await api.decideRequest(r.id, false);
-              toast('Запрос отклонён', 'ok');
-              await refresh();
-            }),
-          }, 'Отклонить')));
+        h('div', { class: 'amounts', role: 'group', 'aria-label': 'Сколько добавить' }, chips),
+        h('div', { class: 'grant' }, confirm, deny));
     };
 
     const recentRow = (r) => {
