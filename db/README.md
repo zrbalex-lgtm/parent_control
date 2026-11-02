@@ -11,11 +11,12 @@ Supabase project (one schema per home project; Auth is shared).
 | `migrations/004_time_requests.sql` | `time_requests`, `device_sync` v2 (`p_time_requests`), `admin_decide_request` |
 | `migrations/005_locked_by_default.sql` | `day_unlocks`, unlock requests, `fn_day_access`, `settings` |
 | `migrations/006_child_locked_by_default.sql` | `children.locked_by_default` (per child) |
+| `migrations/007_hardening.sql` | `tamper_events`, `device_report`, `device_beacon`, tamper lock, admin RPCs |
 | `tests/` | Local test run against plain PostgreSQL (with a Supabase stub) |
 
 ## Applying to Supabase
 
-1. Run the migrations in order: `001` … `006`.
+1. Run the migrations in order: `001` … `007`.
 2. Settings → API (Data API) → **Exposed schemas**: add `parent_control`.
 3. Auth → Providers → Email: **disable sign-ups** (shared by all home projects).
 4. Create the parent user (Auth → Users → Add user), then:
@@ -78,3 +79,12 @@ Response:
 Idempotent by `client_id`; at most one pending request per child; unknown/unbound SIDs ignored.
 Response gets `"requests": [{"id", "client_id", "child_id", "minutes", "granted_minutes", "status", "created_at", "decided_at"}]`
 (pending + last 24h). Admin decides via `admin_decide_request(p_id, p_approve, p_minutes, p_local_date)`; approval inserts a bonus.
+
+### Tamper events (since 007)
+
+- `device_report(p_device_id, p_secret, p_events)` — items `{"client_id", "occurred_at", "type", "details": {}, "user"}`;
+  returns `{"accepted", "tamper_locked"}`. Lock types (see `fn_is_lock_event`) set `devices.tamper_locked_since`
+  when `settings.tamper_action = 'lock'`.
+- `device_beacon(p_machine_name, p_reason, p_device_id)` — unauthenticated "config lost" signal, rate limited.
+- `device_sync` response adds `tamper_locked`, `tamper_action`.
+- Admin: `admin_clear_tamper_lock(device_id)`, `admin_mark_tamper_handled(ids[])`.

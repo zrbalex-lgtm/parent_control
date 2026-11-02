@@ -328,5 +328,57 @@ set role anon;
 select device_sync(:'dev1', :'sec1b', '0.4.0', now(), current_date, '[]') as r \gset
 select pg_temp.check((:'r'::jsonb#>>'{children,0,days,1,requires_unlock}')::boolean, 'child flag on: unlock needed');
 
+-- ---------------------------------------------------------------------
+-- Tamper events (007)
+-- ---------------------------------------------------------------------
+reset role;
+set role anon;
+select pg_temp.expect_error(format($$select device_report(%L, 'bad', '[]')$$, :'dev1'), '28000', 'report needs the secret');
+
+-- notify-only event does not lock
+select device_report(:'dev1', :'sec1b',
+  '[{"client_id":"f0000000-0000-4000-8000-000000000001","occurred_at":"2026-11-02T10:00:00Z","type":"tray_unresponsive","user":"misha"}]') as r \gset
+select pg_temp.check((:'r'::jsonb->>'accepted')::int = 1 and not (:'r'::jsonb->>'tamper_locked')::boolean, 'non-lock event accepted, no lock');
+
+-- lock event (+ resend + junk)
+select device_report(:'dev1', :'sec1b',
+  '[{"client_id":"f0000000-0000-4000-8000-000000000002","type":"config_restored","details":{"file":"device.json"}},
+    {"client_id":"f0000000-0000-4000-8000-000000000001","type":"tray_unresponsive"},
+    {"client_id":"bad","type":"acl_fixed"},
+    {"client_id":"f0000000-0000-4000-8000-000000000003","type":"DROP TABLE"}]') as r \gset
+select pg_temp.check((:'r'::jsonb->>'accepted')::int = 1 and (:'r'::jsonb->>'tamper_locked')::boolean, 'lock event locks, junk/resend ignored');
+
+select device_sync(:'dev1', :'sec1b', '1.1.0', now(), current_date, '[]') as r \gset
+select pg_temp.check((:'r'::jsonb->>'tamper_locked')::boolean and :'r'::jsonb->>'tamper_action' = 'lock', 'sync reports tamper lock');
+
+-- beacon: unverified, rate limited, flags config lost
+select device_beacon('MISHA-PC', 'device.json and registry missing', :'dev1');
+select device_beacon('MISHA-PC', 'again', :'dev1');
+reset role;
+select pg_temp.check((select count(*) from tamper_events where not verified) = 1, 'beacon rate limited');
+select pg_temp.check((select config_state from devices where id = :'dev1') = 'lost', 'beacon marks config lost');
+set role anon;
+select device_sync(:'dev1', :'sec1b', '1.1.0', now(), current_date, '[]') as r \gset
+reset role;
+select pg_temp.check((select config_state from devices where id = :'dev1') = 'ok', 'authenticated sync clears lost');
+
+-- admin
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select admin_dashboard(current_date) as dash \gset
+select pg_temp.check((select bool_or((d->>'tamper_unhandled')::int = 3 and d->>'tamper_locked_since' is not null)
+                        from jsonb_array_elements(:'dash'::jsonb->'devices') d), 'dashboard shows device tamper state');
+select pg_temp.check((:'dash'::jsonb#>>'{children,0,tamper_locked}')::boolean, 'dashboard flags child');
+select admin_mark_tamper_handled(array(select id from tamper_events));
+select admin_clear_tamper_lock(:'dev1');
+select pg_temp.check((select count(*) from tamper_events where handled_at is null) = 0, 'events handled');
+update settings set tamper_action = 'notify';
+reset request.jwt.claim.sub;
+set role anon;
+select device_report(:'dev1', :'sec1b',
+  '[{"client_id":"f0000000-0000-4000-8000-000000000004","type":"acl_fixed"}]') as r \gset
+select pg_temp.check(not (:'r'::jsonb->>'tamper_locked')::boolean, 'notify mode does not lock');
+select pg_temp.expect_error($$select count(*) from parent_control.tamper_events$$, '42501', 'anon cannot read events');
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');
