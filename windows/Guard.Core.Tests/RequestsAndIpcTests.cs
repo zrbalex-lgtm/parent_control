@@ -139,4 +139,32 @@ public class RequestsAndIpcTests : IDisposable
         Assert.Equal("2:05", Texts.Remaining(125));
         Assert.Equal("без ограничений", Texts.Remaining(null));
     }
+
+    [Fact]
+    public async Task Polls_fast_only_while_a_request_waits_for_an_answer()
+    {
+        _api.Respond = _ => Server();
+        await _engine.SyncAsync(default);
+        Assert.False(_engine.AwaitingDecision(TimeSpan.FromMinutes(15)));
+
+        _engine.RequestTime("S-1", 30, null);
+        Assert.True(_engine.AwaitingDecision(TimeSpan.FromMinutes(15))); // queued, not uploaded yet
+
+        var pending = new RequestInfo(7, Guid.NewGuid(), Misha, 30, null, RequestStatuses.Pending, _time.UtcNow, null);
+        _api.Respond = _ => Server([pending]);
+        await _engine.SyncAsync(default);
+        Assert.True(_engine.AwaitingDecision(TimeSpan.FromMinutes(15))); // uploaded, waiting
+
+        _time.Advance(TimeSpan.FromMinutes(16));
+        Assert.False(_engine.AwaitingDecision(TimeSpan.FromMinutes(15))); // nobody answers: back to the minute pulse
+
+        _api.Respond = _ => Server([pending with { Status = RequestStatuses.Approved, GrantedMinutes = 30, DecidedAt = _time.UtcNow }]);
+        await _engine.SyncAsync(default);
+        Assert.False(_engine.AwaitingDecision(TimeSpan.FromMinutes(15)));
+
+        _api.Throw = new ApiException("network");
+        _engine.RequestTime("S-1", 15, null);
+        await _engine.SyncAsync(default);
+        Assert.False(_engine.AwaitingDecision(TimeSpan.FromMinutes(15))); // offline: no tight loop
+    }
 }

@@ -477,6 +477,20 @@ public sealed class GuardEngine
         return RequestTimeResult.Queued;
     }
 
+    /// <summary>
+    /// A request is queued, or uploaded and still pending for less than <paramref name="maxWait"/>:
+    /// worth polling the server more often so the answer reaches the child quickly.
+    /// Not while offline (each attempt would just wait for the network timeout).
+    /// </summary>
+    public bool AwaitingDecision(TimeSpan maxWait)
+    {
+        if (_creds is null || State.LastSyncError is not null) return false;
+        if (State.PendingRequests.Count > 0) return true;
+        var now = _time.GetUtcNow();
+        return (State.LastSync?.Requests ?? new List<RequestInfo>())
+            .Any(r => r.Status == RequestStatuses.Pending && now - r.CreatedAt < maxWait);
+    }
+
     public OpenRequest? OpenRequestFor(Guid childId)
     {
         var local = State.PendingRequests.FirstOrDefault(r => ChildOf(r.Sid) == childId);

@@ -21,6 +21,27 @@ public sealed class TrayHub(TimeProvider time, ILogger<TrayHub> log) : Backgroun
     /// <summary>Messages from trays (request_time, ack_notice), drained by the worker.</summary>
     public ConcurrentQueue<(uint Session, IpcMessage Message)> Inbox { get; } = new();
 
+    // Wakes the worker as soon as the tray asks for something (no waiting for the next 5 s tick).
+    private readonly SemaphoreSlim _wake = new(0, 1);
+
+    /// <summary>Waits until a tray message arrives or the timeout passes.</summary>
+    public async Task WaitForMessageAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        await _wake.WaitAsync(timeout, ct);
+    }
+
+    private void Wake()
+    {
+        try
+        {
+            if (_wake.CurrentCount == 0) _wake.Release();
+        }
+        catch (SemaphoreFullException)
+        {
+            // Already signalled.
+        }
+    }
+
     public bool IsConnected(uint session) => _bySession.ContainsKey(session);
 
     public bool Send(uint session, IpcMessage message) =>
@@ -93,6 +114,7 @@ public sealed class TrayHub(TimeProvider time, ILogger<TrayHub> log) : Backgroun
                     case IpcTypes.RequestTime:
                     case IpcTypes.AckNotice:
                         Inbox.Enqueue((c.Session, m));
+                        Wake();
                         break;
                     case IpcTypes.Hello:
                         log.LogInformation("Tray {Version} hello from session {Session}", m.Version, c.Session);

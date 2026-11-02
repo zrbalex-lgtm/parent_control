@@ -30,6 +30,9 @@ public sealed class GuardWorker(
     private string? _lastDecisionKey;
     private int _notRegisteredTicks;
     private bool _syncNow;
+    private DateTimeOffset _lastSyncAt = DateTimeOffset.MinValue;
+    private static readonly TimeSpan AnswerPollEvery = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan AnswerPollFor = TimeSpan.FromMinutes(15);
 
     // per console session
     private uint? _session;
@@ -72,7 +75,7 @@ public sealed class GuardWorker(
 
             try
             {
-                await Task.Delay(CheckInterval, time, ct);
+                await hub.WaitForMessageAsync(CheckInterval, ct);
             }
             catch (OperationCanceledException)
             {
@@ -96,9 +99,12 @@ public sealed class GuardWorker(
             Harden(sample);
         }
 
-        if (engine.RecordMinute(sample) is not null || _syncNow)
+        // Normally once a minute; every check while a child waits for an answer, so it arrives in seconds.
+        var waiting = engine.AwaitingDecision(AnswerPollFor) && now - _lastSyncAt >= AnswerPollEvery;
+        if (engine.RecordMinute(sample) is not null || _syncNow || waiting)
         {
             _syncNow = false;
+            _lastSyncAt = now;
             var outcome = await engine.SyncAsync(ct);
             if (outcome == SyncOutcome.NotRegistered && _notRegisteredTicks++ % 60 == 0)
             {
