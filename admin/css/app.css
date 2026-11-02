@@ -400,3 +400,5 @@ ul.card.list > li.row { padding: 10px 0; border-top: 1px solid var(--line); }
 ul.card.list > li.row:first-child { border-top: 0; }
 .app-head .btn { white-space: nowrap; flex: none; }
 .stat { font-size: 1.1rem; }
+
+.icon-only { min-width: 40px; padding: 0 10px; font-size: 1.1rem; text-decoration: none; }

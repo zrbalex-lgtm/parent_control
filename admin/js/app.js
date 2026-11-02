@@ -10,6 +10,7 @@ const ROUTES = {
   security: { title: 'Безопасность', tab: 'Защита', icon: '◈', load: () => import('./views/security.js') },
   // Not in the tab bar: opened from History.
   groups: { title: 'Группы приложений', icon: '', hidden: true, parent: 'history', load: () => import('./views/groups.js') },
+  settings: { title: 'Настройки', icon: '', hidden: true, load: () => import('./views/settings.js') },
 };
 const DEFAULT_ROUTE = 'home';
 
@@ -77,6 +78,7 @@ function renderShell() {
         h('span', {}, r.tab || r.title))));
   const header = h('header', { class: 'topbar' },
     h('h1', { id: 'page-title' }, ''),
+    h('a', { class: 'btn ghost small icon-only', href: '#/settings', 'aria-label': 'Настройки', title: 'Настройки' }, '⚙'),
     h('button', {
       class: 'btn ghost small',
       onclick: (e) => busy(e.currentTarget, () => api.signOut()),

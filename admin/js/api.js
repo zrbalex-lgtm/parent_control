@@ -178,7 +178,7 @@ export const api = {
     const [pending, recent] = await Promise.all([
       sb.from('time_requests').select('id,child_id,device_id,kind,minutes,reason,status,granted_minutes,created_at,decided_at')
         .eq('status', 'pending').order('created_at').then(unwrap),
-      sb.from('time_requests').select('id,child_id,device_id,kind,minutes,reason,status,granted_minutes,created_at,decided_at')
+      sb.from('time_requests').select('id,child_id,device_id,kind,minutes,reason,status,granted_minutes,created_at,decided_at,decided_by_name')
         .neq('status', 'pending').gte('decided_at', since).order('decided_at', { ascending: false }).then(unwrap),
     ]);
     return { pending, recent };
@@ -214,6 +214,17 @@ export const api = {
   },
   async deleteAppGroup(id) {
     unwrap(await sb.from('app_groups').delete().eq('id', id));
+  },
+
+  // ---------------- telegram ----------------
+  async listTgChats() {
+    return unwrap(await sb.from('tg_chats').select('chat_id,title,linked_by,linked_at').order('linked_at'));
+  },
+  async removeTgChat(chatId) {
+    unwrap(await sb.from('tg_chats').delete().eq('chat_id', chatId));
+  },
+  async tgLinkCode() {
+    return unwrap(await sb.rpc('admin_tg_link_code'));
   },
 
   // ---------------- security (tamper events) ----------------

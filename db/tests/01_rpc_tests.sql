@@ -429,5 +429,38 @@ select pg_temp.check(:'hist'::jsonb#>>'{apps,0,app}' = 'Minecraft' and (:'hist':
 select pg_temp.check(not (admin_ungrouped(7) @> '[{"exe":"javaw.exe"}]'), 'grouped app leaves ungrouped list');
 reset request.jwt.claim.sub;
 
+-- ---------------------------------------------------------------------
+-- Telegram (010)
+-- ---------------------------------------------------------------------
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select admin_tg_link_code() as tgcode \gset
+select pg_temp.check(length(:'tgcode') = 6, 'link code issued');
+reset request.jwt.claim.sub;
+select pg_temp.expect_error($$select parent_control.tg_status()$$, '42501', 'admin app cannot call bot functions');
+reset role;
+
+-- a fresh pending request from the PC
+set role anon;
+select device_sync(:'dev1', :'sec1b', '1.2.0', now(), current_date, '[]',
+  '{}'::bigint[], '[{"client_id":"bbbbbbbb-0000-4000-8000-000000000001","sid":"S-1-5-21-misha","minutes":45,"reason":"дорисовать"}]') as r \gset
+reset role;
+select id as tgreq from time_requests where client_id = 'bbbbbbbb-0000-4000-8000-000000000001' \gset
+
+set role service_role;
+select pg_temp.expect_error(format($$select parent_control.tg_decide(42, %s, true, 30, 'x')$$, :'tgreq'), '42501', 'unlinked chat cannot decide');
+select pg_temp.check(not tg_link_chat('ZZZZZZ', 42, 'Семья', 'Alexander'), 'wrong code does not link');
+select pg_temp.check(tg_link_chat(lower(:'tgcode'), 42, 'Семья', 'Alexander'), 'code links chat');
+select pg_temp.check(not tg_link_chat(:'tgcode', 43, 'Чужой', 'x'), 'code is one-time');
+select pg_temp.check(jsonb_array_length(tg_pending_requests()) >= 1, 'pending requests listed');
+select tg_decide(42, :'tgreq', true, 30, 'Alexander') as info \gset
+select pg_temp.check(:'info'::jsonb->>'status' = 'approved' and (:'info'::jsonb->>'granted_minutes')::int = 30
+                     and :'info'::jsonb->>'decided_by_name' = 'Telegram: Alexander'
+                     and :'info'::jsonb->>'child' = 'Миша', 'bot approves with chosen minutes');
+select pg_temp.expect_error(format($$select parent_control.tg_decide(42, %s, false, null, 'x')$$, :'tgreq'), '22023', 'second decision rejected');
+select pg_temp.check(tg_status()->0->>'name' = 'Миша' and (tg_status()->0->>'spent')::int > 0, 'status lists children');
+reset role;
+select pg_temp.check((select count(*) from bonuses where reason = 'Запрос: дорисовать' and minutes = 30) = 1, 'approval from bot adds bonus');
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

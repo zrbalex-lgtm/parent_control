@@ -364,6 +364,20 @@ if ((await store()).app_groups.length !== 2) fail('two rules stored');
 step('groups: rules, ungrouped list, regex error');
 await page.screenshot({ path: `${shots}/17-groups.png`, fullPage: true });
 
+// ---------- settings: telegram ----------
+await page.getByRole('link', { name: 'Настройки' }).click();
+await page.getByRole('heading', { name: 'Telegram' }).waitFor();
+await page.getByText('Семья').waitFor();
+await page.getByRole('button', { name: '+ Подключить чат' }).click();
+await page.getByText('A1B2C3', { exact: true }).waitFor();
+if ((await page.getByRole('link', { name: /Открыть @Parent_control_zrb_bot/ }).getAttribute('href')) !== 'https://t.me/Parent_control_zrb_bot?start=A1B2C3') fail('deep link with code');
+await page.screenshot({ path: `${shots}/18-telegram.png` });
+await page.getByRole('button', { name: 'Готово' }).click();
+await page.getByRole('button', { name: 'Отключить: Семья' }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Отключить' }).click();
+await page.getByText('Подключённых чатов нет.').waitFor();
+step('settings: telegram link code and unlink');
+
 // logout
 await page.getByRole('button', { name: 'Выйти' }).click();
 await page.getByRole('button', { name: 'Войти' }).waitFor();

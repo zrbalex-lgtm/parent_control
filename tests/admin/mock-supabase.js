@@ -21,6 +21,7 @@ const store = (window.__store = {
   ],
   tamper_events: [],
   app_groups: [],
+  tg_chats: [{ chat_id: -100123, title: 'Семья', linked_by: 'Alexander', linked_at: iso(86400e3) }],
   device_accounts: [],
   time_requests: [],
   bonuses: [],
@@ -55,7 +56,7 @@ const ruleMatches = (r, a) => {
 const groupOf = (a) => store.app_groups.filter((r) => r.is_enabled !== false)
   .sort((x, y) => (x.priority ?? 100) - (y.priority ?? 100)).find((r) => ruleMatches(r, a))?.group_name ?? null;
 
-const PK = { app_groups: ['id'], commands: ['id'], bonuses: ['id'], settings: ['id'], day_unlocks: ['child_id', 'local_date'], children: ['id'], devices: ['id'], device_accounts: ['id'],
+const PK = { tg_chats: ['chat_id'], app_groups: ['id'], commands: ['id'], bonuses: ['id'], settings: ['id'], day_unlocks: ['child_id', 'local_date'], children: ['id'], devices: ['id'], device_accounts: ['id'],
              schedule_weekly: ['child_id', 'weekday'], schedule_overrides: ['child_id', 'local_date'] };
 const TIME_COLS = ['window_from', 'window_to'];
 const toPgTime = (r) => {
@@ -210,6 +211,7 @@ export function createClient() {
         }
         return { data: null, error: null };
       }
+      if (name === 'admin_tg_link_code') return { data: 'A1B2C3', error: null };
       if (name === 'admin_history') {
         const days = [];
         for (let d = new Date(`${args.p_from}T00:00:00`); d <= new Date(`${args.p_to}T00:00:00`); d.setDate(d.getDate() + 1)) {

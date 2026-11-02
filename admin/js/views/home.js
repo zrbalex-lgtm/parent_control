@@ -244,7 +244,7 @@ export async function render({ api }) {
           h('div', {}, `${child.name}: ${what}`),
           h('div', { class: 'small' },
             h('span', { class: r.status === 'approved' ? 'ok-text' : 'muted' }, result),
-            h('span', { class: 'muted' }, ` · ${fmtAgo(r.decided_at)}`))));
+            h('span', { class: 'muted' }, ` · ${fmtAgo(r.decided_at)}${r.decided_by_name?.startsWith('Telegram') ? ` · ${r.decided_by_name}` : ''}`))));
     };
 
     container.replaceChildren(...[
