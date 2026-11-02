@@ -6,6 +6,7 @@ Home screen-time control for kids' Windows PCs.
 |---|---|
 | `db/` | Supabase schema (`parent_control`), RPC, local tests |
 | `admin/` | Parent PWA on GitHub Pages: dashboard, requests, history, app groups, children, schedule, devices, security |
+| `supabase/functions/telegram-bot/` | Telegram bot (Edge Function): request buttons, /status, /requests |
 | `windows/` | Guard service + tray app (.NET 10, one exe), PowerShell installer |
 | `tests/admin/` | Browser tests of the admin app against a Supabase mock |
 
