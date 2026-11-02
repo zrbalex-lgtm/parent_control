@@ -95,8 +95,10 @@ jobs:
           }
           if (Test-Path $dir) { throw 'install folder left' }
           if (Test-Path 'HKLM:\SOFTWARE\ParentControl') { throw 'registry backup left' }
+          $ErrorActionPreference = 'Continue'
           & schtasks.exe /Query /TN 'ParentControl Watchdog' 2>&1 | Out-Null
           if (-not $LASTEXITCODE) { throw 'watchdog task left' }
+          $ErrorActionPreference = 'Stop'
           if ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run').ParentControlTray) { throw 'run key left' }
           Write-Host 'uninstall ok'
 
