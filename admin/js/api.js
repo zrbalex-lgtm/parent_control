@@ -18,7 +18,7 @@ const hhmm = (t) => (t ? String(t).slice(0, 5) : null);
 
 const DEVICE_COLUMNS =
   'id,name,machine_name,is_enabled,registered_at,reg_code_expires_at,' +
-  'client_version,last_seen_at,clock_skew_sec,created_at';
+  'client_version,last_seen_at,clock_skew_sec,created_at,tamper_locked_since,config_state';
 
 export const api = {
   // ---------------- auth ----------------
@@ -134,11 +134,14 @@ export const api = {
   },
   // ---------------- settings & daily access ----------------
   async getSettings() {
-    const rows = unwrap(await sb.from('settings').select('locked_by_default').eq('id', 1));
-    return rows[0] || { locked_by_default: false };
+    const rows = unwrap(await sb.from('settings').select('locked_by_default,tamper_action').eq('id', 1));
+    return rows[0] || { locked_by_default: false, tamper_action: 'lock' };
   },
   async setLockedByDefault(on) {
     unwrap(await sb.from('settings').update({ locked_by_default: on, updated_at: new Date().toISOString() }).eq('id', 1));
+  },
+  async setTamperAction(action) {
+    unwrap(await sb.from('settings').update({ tamper_action: action, updated_at: new Date().toISOString() }).eq('id', 1));
   },
   async dashboard(localDateStr) {
     return unwrap(await sb.rpc('admin_dashboard', { p_local_date: localDateStr }));
@@ -184,6 +187,26 @@ export const api = {
     unwrap(await sb.rpc('admin_decide_request', {
       p_id: id, p_approve: approve, p_minutes: approve ? minutes : null, p_local_date: localDateStr,
     }));
+  },
+
+  // ---------------- security (tamper events) ----------------
+  async listTamperEvents({ onlyUnhandled = false, deviceId = null, limit = 100 } = {}) {
+    let q = sb.from('tamper_events')
+      .select('id,device_id,machine_name,occurred_at,received_at,type,details,windows_user,verified,handled_at');
+    if (onlyUnhandled) q = q.is('handled_at', null);
+    if (deviceId) q = q.eq('device_id', deviceId);
+    return unwrap(await q.order('occurred_at', { ascending: false }).limit(limit));
+  },
+  async countUnhandledTamper() {
+    const rows = unwrap(await sb.from('tamper_events').select('id').is('handled_at', null).limit(100));
+    return rows.length;
+  },
+  async markTamperHandled(ids) {
+    if (!ids.length) return;
+    unwrap(await sb.rpc('admin_mark_tamper_handled', { p_ids: ids }));
+  },
+  async clearTamperLock(deviceId) {
+    unwrap(await sb.rpc('admin_clear_tamper_lock', { p_device_id: deviceId }));
   },
 
   async setAccountChild(accountId, childId) {

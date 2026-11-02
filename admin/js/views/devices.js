@@ -34,7 +34,12 @@ function flagChips(d) {
   if (f.unbound_account) out.push('Есть непривязанная учётка');
   if (f.long_silence) out.push('Молчит больше суток');
   if (f.offline_minutes_7d > 0) out.push(`Без сети за неделю: ${f.offline_minutes_7d} мин`);
-  return out.map((t) => h('span', { class: 'flag' }, t));
+  const chips = out.map((t) => h('span', { class: 'flag' }, t));
+  // Tamper state links to the security tab.
+  if (d.tamper_locked_since) chips.unshift(h('a', { class: 'flag danger', href: '#/security' }, 'Заблокирован после вмешательства'));
+  if (d.config_state === 'lost') chips.unshift(h('a', { class: 'flag danger', href: '#/security' }, 'Конфиг утерян'));
+  if (d.config_state === 'restored') chips.push(h('a', { class: 'flag', href: '#/security' }, 'Конфиг восстановлен'));
+  return chips;
 }
 
 function showCode(name, code) {
@@ -99,6 +104,7 @@ export async function render({ api }) {
         h('summary', { class: 'icon-btn', 'aria-label': `Действия: ${d.name}` }, '⋯'),
         h('div', { class: 'menu-list' },
           h('button', { onclick: () => rename(d) }, 'Переименовать'),
+          d.tamper_locked_since ? h('button', { onclick: () => unlockTamper(d) }, 'Разблокировать после вмешательства') : null,
           h('button', { onclick: () => toggle(d) }, d.is_enabled ? 'Отключить' : 'Включить'),
           h('button', { onclick: () => newCode(d) }, d.registered_at ? 'Переустановка: новый код' : 'Новый код'),
           h('button', { class: 'danger-text', onclick: () => remove(d) }, 'Удалить')));
@@ -141,6 +147,18 @@ export async function render({ api }) {
     const name = await askName('Переименовать', d.name);
     if (!name || name === d.name) return;
     await busy(null, async () => { await api.updateDevice(d.id, { name }); await refresh(); });
+  }
+
+  async function unlockTamper(d) {
+    const ok = await confirmDialog(`Разблокировать «${d.name}»?`,
+      'Детские учётки снова будут работать по расписанию. События можно посмотреть на вкладке «Безопасность».',
+      { okText: 'Разблокировать', danger: false });
+    if (!ok) return;
+    await busy(null, async () => {
+      await api.clearTamperLock(d.id);
+      toast('Разблокировано', 'ok');
+      await refresh();
+    });
   }
 
   async function toggle(d) {

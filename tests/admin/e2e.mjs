@@ -118,6 +118,42 @@ if ((await store()).devices[0].is_enabled !== false) fail('device disabled');
 step('device disabled via menu + confirm');
 await page.screenshot({ path: `${shots}/05-devices-after.png`, fullPage: true });
 
+// ---------- security ----------
+await page.getByText('Заблокирован после вмешательства').first().waitFor();
+await page.getByText('Конфиг восстановлен').waitFor();
+step('device shows tamper state');
+if ((await page.locator('#security-badge').textContent()) !== '2') fail('security badge shows 2 unread');
+await page.getByRole('link', { name: /Защита/ }).click();
+await page.getByRole('heading', { name: 'Безопасность' }).waitFor();
+await page.getByText('Удалены файлы программы (регистрация, настройки и учёт) — восстановлены').waitFor();
+await page.getByText('Изменён часовой пояс: W. Europe Standard Time → Hawaiian Standard Time').waitFor();
+if (await page.getByText('Значок в трее закрыт больше 5 минут').count()) fail('handled event hidden under "Новые"');
+step('security feed shows unread events');
+await page.screenshot({ path: `${shots}/14-security.png`, fullPage: true });
+
+await page.getByRole('button', { name: /^Прочитано: Изменён часовой пояс/ }).click();
+await page.locator('[data-event="2"]').waitFor({ state: 'detached' });
+if (!(await store()).tamper_events.find((e) => e.id === 2).handled_at) fail('event marked handled');
+await page.getByRole('button', { name: 'Все', exact: true }).click();
+await page.getByText('Значок в трее закрыт больше 5 минут').waitFor();
+step('mark one handled, show all');
+
+await page.getByRole('button', { name: 'Разблокировать' }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Разблокировать' }).click();
+await page.getByText('Все компьютеры в порядке').waitFor();
+if ((await store()).devices[0].tamper_locked_since !== null) fail('tamper lock cleared');
+step('tamper lock cleared');
+
+await page.getByText('Только оповещать').click();
+await page.getByText('Только оповещения').waitFor();
+if ((await store()).settings[0].tamper_action !== 'notify') fail('tamper action saved');
+step('tamper action switched to notify');
+
+await page.getByRole('button', { name: 'Прочитать все' }).click();
+await page.getByText('Отмечено').waitFor();
+await page.waitForFunction(() => document.getElementById('security-badge').hidden);
+step('mark all read clears badge');
+
 // ---------- time requests ----------
 await page.evaluate(() => {
   const s = window.__store;
@@ -297,7 +333,7 @@ await page.setViewportSize({ width: 360, height: 780 });
 await page.getByLabel('Пароль').fill('secret');
 await page.getByLabel('Email').fill('admin@pc.home');
 await page.getByRole('button', { name: 'Войти' }).click();
-for (const tab of ['Главная', 'Дети', 'Расписание', 'Устройства']) {
+for (const tab of ['Главная', 'Дети', 'Расписание', 'Устройства', 'Защита']) {
   await page.getByRole('link', { name: new RegExp(tab) }).click();
   await page.waitForTimeout(400);
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

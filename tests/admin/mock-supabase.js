@@ -12,19 +12,30 @@ const store = (window.__store = {
   devices: [
     { id: uid(), name: 'Комп в детской', machine_name: 'KIDS-PC', is_enabled: true,
       registered_at: iso(86400e3), reg_code_expires_at: null, client_version: '0.1.0',
-      last_seen_at: iso(30e3), clock_skew_sec: 420, created_at: iso(86400e3) },
+      last_seen_at: iso(30e3), clock_skew_sec: 420, created_at: iso(86400e3),
+      tamper_locked_since: iso(600e3), config_state: 'restored' },
     { id: uid(), name: 'Ноутбук', machine_name: null, is_enabled: true,
       registered_at: null, reg_code_expires_at: new Date(now + 20 * 3600e3).toISOString(),
-      client_version: null, last_seen_at: null, clock_skew_sec: null, created_at: iso(3600e3) },
+      client_version: null, last_seen_at: null, clock_skew_sec: null, created_at: iso(3600e3),
+      tamper_locked_since: null, config_state: 'ok' },
   ],
+  tamper_events: [],
   device_accounts: [],
   time_requests: [],
   bonuses: [],
-  settings: [{ id: 1, locked_by_default: false }],
+  settings: [{ id: 1, locked_by_default: false, tamper_action: 'lock' }],
   day_unlocks: [],
   commands: [],
   schedule_weekly_seed: null,
 });
+store.tamper_events.push(
+  { id: 1, device_id: store.devices[0].id, machine_name: 'KIDS-PC', occurred_at: iso(600e3), received_at: iso(590e3),
+    type: 'config_restored', details: { files: 'device.json,state.json' }, windows_user: 'misha', verified: true, handled_at: null },
+  { id: 2, device_id: store.devices[0].id, machine_name: 'KIDS-PC', occurred_at: iso(500e3), received_at: iso(490e3),
+    type: 'clock_changed', details: { kind: 'timezone', from: 'W. Europe Standard Time', to: 'Hawaiian Standard Time' },
+    windows_user: 'misha', verified: true, handled_at: null },
+  { id: 3, device_id: store.devices[0].id, machine_name: 'KIDS-PC', occurred_at: iso(90000e3), received_at: iso(90000e3),
+    type: 'tray_unresponsive', details: {}, windows_user: 'misha', verified: true, handled_at: iso(80000e3) });
 store.device_accounts.push(
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-1', windows_user: 'misha', child_id: null, last_seen_at: iso(60e3) },
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-2', windows_user: 'papa', child_id: null, last_seen_at: iso(7200e3) });
@@ -54,6 +65,8 @@ class Query {
   gte(c, v) { this.filters.push((r) => r[c] != null && r[c] >= v); return this; }
   neq(c, v) { this.filters.push((r) => r[c] !== v); return this; }
   in(c, vs) { this.filters.push((r) => vs.includes(r[c])); return this; }
+  is(c, v) { this.filters.push((r) => (r[c] ?? null) === v); return this; }
+  limit(n) { this.max = n; return this; }
   order(c, opts = {}) { this.orders.push({ c, desc: opts.ascending === false }); return this; }
   insert(rows) { this.op = 'insert'; this.payload = [].concat(rows); return this; }
   update(patch) { this.op = 'update'; this.payload = patch; return this; }
@@ -78,7 +91,7 @@ class Query {
         for (const { c, desc } of [...this.orders].reverse()) {
           out.sort((a, b) => (desc ? -1 : 1) * String(a[c] ?? '').localeCompare(String(b[c] ?? ''), 'ru', { numeric: true }));
         }
-        return { data: out, error: null };
+        return { data: this.max ? out.slice(0, this.max) : out, error: null };
       }
       case 'insert':
         for (const p of this.payload) rows.push(toPgTime({ id: uid(), created_at: new Date().toISOString(), ...p }));
@@ -162,6 +175,8 @@ export function createClient() {
             unlocked: store.day_unlocks.some((u) => u.child_id === c.id && u.local_date === args.p_local_date),
             now: i === 0 ? { device_id: store.devices[0].id, device_name: store.devices[0].name, state: 'active',
                              app_group: 'Minecraft', exe: 'javaw.exe', title: 'Minecraft 1.21', minute_ts: new Date().toISOString() } : null,
+            tamper_unhandled: 0,
+            tamper_locked: false,
             locks: store.commands.filter((k) => k.child_id === c.id && k.kind === 'lock' && !k.cancelled_at
                                           && (!k.lock_until || Date.parse(k.lock_until) > now)),
           };
@@ -178,6 +193,15 @@ export function createClient() {
           r.granted_minutes = args.p_minutes ?? r.minutes;
           store.bonuses.push({ child_id: r.child_id, local_date: args.p_local_date, minutes: r.granted_minutes });
         }
+        return { data: null, error: null };
+      }
+      if (name === 'admin_clear_tamper_lock') {
+        const d = store.devices.find((x) => x.id === args.p_device_id);
+        Object.assign(d, { tamper_locked_since: null, config_state: 'ok' });
+        return { data: null, error: null };
+      }
+      if (name === 'admin_mark_tamper_handled') {
+        for (const e of store.tamper_events) if (args.p_ids.includes(e.id) && !e.handled_at) e.handled_at = new Date().toISOString();
         return { data: null, error: null };
       }
       if (name === 'admin_create_device') {

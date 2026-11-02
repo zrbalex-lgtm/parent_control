@@ -328,3 +328,37 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .action-row .btn { flex: 1 1 auto; }
 .refresh-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 textarea { resize: vertical; min-height: 88px; }
+
+/* ---------- security ---------- */
+.tab-icon { position: relative; }
+.tab-badge {
+  position: absolute; top: -4px; left: calc(100% - 4px);
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px;
+  background: var(--danger); color: #fff; font-size: .68rem; font-weight: 600; line-height: 17px; text-align: center;
+}
+.tab-badge[hidden] { display: none; }
+a.flag { text-decoration: none; }
+.flag.warn { color: var(--warn); }
+.block { display: block; }
+.ok-banner { color: var(--ok); }
+.choices { display: flex; flex-direction: column; gap: 8px; }
+.choice {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 10px 12px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 12px; color: var(--text);
+}
+.choice input { flex: none; width: 18px; height: 18px; min-height: 0; margin: 3px 0 0; padding: 0; accent-color: var(--accent); }
+.choice.selected { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.filter-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.filter-row select { flex: 1; min-width: 160px; }
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+.segmented button {
+  border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .9rem;
+  padding: 6px 14px; border-radius: 999px; cursor: pointer; min-height: 34px;
+}
+.segmented button.active { background: var(--accent); color: #fff; }
+.events .event { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.events .event:first-child { border-top: 0; }
+.event.handled { opacity: .6; }
+.event-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--warn); }
+.event-dot.danger { background: var(--danger); }
+.card.events { padding: 2px 16px; }

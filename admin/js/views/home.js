@@ -155,6 +155,11 @@ export async function render({ api }) {
       if (c.requires_unlock) {
         badges.push(h('span', { class: `flag ${c.unlocked ? 'ok' : ''}` }, c.unlocked ? 'Доступ открыт' : 'Доступ закрыт'));
       }
+      if (c.tamper_locked) {
+        badges.push(h('a', { class: 'flag danger', href: '#/security' }, 'Заблокирован после вмешательства'));
+      } else if (c.tamper_unhandled > 0) {
+        badges.push(h('a', { class: 'flag', href: '#/security' }, `Вмешательство: ${c.tamper_unhandled}`));
+      }
 
       // actions
       const bonusButtons = QUICK_BONUS.map((m) => h('button', {

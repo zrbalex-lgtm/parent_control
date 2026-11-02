@@ -6,6 +6,7 @@ const ROUTES = {
   children: { title: 'Дети', icon: '☺', load: () => import('./views/children.js') },
   schedule: { title: 'Расписание', icon: '◷', load: () => import('./views/schedule.js') },
   devices: { title: 'Устройства', icon: '▭', load: () => import('./views/devices.js') },
+  security: { title: 'Безопасность', tab: 'Защита', icon: '◈', load: () => import('./views/security.js') },
 };
 const DEFAULT_ROUTE = 'home';
 
@@ -68,8 +69,9 @@ function renderShell() {
   const nav = h('nav', { class: 'tabbar', 'aria-label': 'Разделы' },
     Object.entries(ROUTES).map(([name, r]) =>
       h('a', { href: `#/${name}`, 'data-route': name, class: 'tab' },
-        h('span', { class: 'tab-icon', 'aria-hidden': 'true' }, r.icon),
-        h('span', {}, r.title))));
+        h('span', { class: 'tab-icon', 'aria-hidden': 'true' }, r.icon,
+          name === 'security' ? h('span', { class: 'tab-badge', id: 'security-badge', hidden: true }) : null),
+        h('span', {}, r.tab || r.title))));
   const header = h('header', { class: 'topbar' },
     h('h1', { id: 'page-title' }, ''),
     h('button', {
@@ -99,11 +101,26 @@ async function renderRoute() {
     const content = await mod.render({ api, navigate: (r) => { location.hash = `#/${r}`; } });
     if (seq !== renderSeq) return;
     view.replaceChildren(content);
+    updateSecurityBadge();
   } catch (err) {
     if (seq !== renderSeq) return;
     view.replaceChildren(h('div', { class: 'card' },
       h('p', {}, humanError(err)),
       h('button', { class: 'btn ghost', onclick: renderRoute }, 'Повторить')));
+  }
+}
+
+// Number of unread security events on the tab (best effort).
+async function updateSecurityBadge() {
+  const badge = document.getElementById('security-badge');
+  if (!badge) return;
+  try {
+    const n = await api.countUnhandledTamper();
+    badge.hidden = n === 0;
+    badge.textContent = n > 99 ? '99+' : String(n);
+    badge.parentElement.parentElement.setAttribute('aria-label', n ? `Защита, новых событий: ${n}` : 'Защита');
+  } catch {
+    badge.hidden = true;
   }
 }
 
@@ -144,6 +161,7 @@ async function main() {
     return;
   }
   window.addEventListener('hashchange', () => { if (shownFor) renderRoute(); });
+  window.addEventListener('security-changed', () => { if (shownFor) updateSecurityBadge(); });
 
   // Auth events can arrive back to back (initial session + getSession);
   // handle them one at a time so the shell is built once.
