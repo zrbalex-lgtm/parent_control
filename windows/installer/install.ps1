@@ -29,7 +29,15 @@ $ExeName     = 'ParentControl.Guard.exe'
 $RunKey      = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
 $RunValue    = 'ParentControlTray'
 $DataDir     = Join-Path $env:ProgramData 'ParentControl'
+$TaskName    = 'ParentControl Watchdog'
 $Source      = $PSScriptRoot
+
+# Runs a native command whose failure is fine (e.g. the task does not exist yet); PS 5.1 would turn its stderr into an error.
+function Invoke-Quiet([scriptblock]$Command) {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Command 2>&1 | Out-Null } finally { $ErrorActionPreference = $old }
+}
 
 function Write-Step([string]$Text) { Write-Host "==> $Text" -ForegroundColor Cyan }
 function Write-Warn([string]$Text) { Write-Host "    $Text" -ForegroundColor Yellow }
@@ -61,6 +69,8 @@ try {
 
     # ---------------------------------------------------------------- stop
     Write-Step 'Останавливаю службу и трей'
+    # The watchdog would start the service again in the middle of the update.
+    Invoke-Quiet { & schtasks.exe /Change /TN $TaskName /DISABLE }
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($svc -and $svc.Status -ne 'Stopped') {
         Stop-Service -Name $ServiceName -Force
@@ -127,6 +137,12 @@ try {
         & $exe register $Code.Trim()
         if ($LASTEXITCODE -ne 0) { throw 'Регистрация не удалась. Проверь код (он действует 24 часа) и интернет.' }
     }
+
+    # ---------------------------------------------------------------- protection
+    # Folder/registry ACLs, service permissions, Safe Mode, watchdog task. Run by us = trusted baseline.
+    Write-Step 'Включаю защиту от вмешательства'
+    & $exe harden
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось включить защиту (код $LASTEXITCODE)" }
 
     # ---------------------------------------------------------------- start
     if (-not $NoStart) {

@@ -42,6 +42,11 @@ public sealed class GuardWorker(
     // tamper checks
     private readonly ClockWatch _clock = new(time, () => Environment.TickCount64, TimeSpan.FromMinutes(2));
     private DateTimeOffset _lastZoneCheck = DateTimeOffset.MinValue;
+    private static readonly TimeSpan HardenEvery = TimeSpan.FromHours(1);
+    private static readonly TimeSpan TrayMissingAfter = TimeSpan.FromMinutes(5);
+    private DateTimeOffset _lastHarden = DateTimeOffset.MinValue;
+    private bool _trayMissingReported;
+    private DateTimeOffset? _trayMissingSince;
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -85,6 +90,11 @@ public sealed class GuardWorker(
 
         HandleInbox(sample);
         CheckTamper(sample, now);
+        if (now - _lastHarden >= HardenEvery)
+        {
+            _lastHarden = now;
+            Harden(sample);
+        }
 
         if (engine.RecordMinute(sample) is not null || _syncNow)
         {
@@ -125,6 +135,8 @@ public sealed class GuardWorker(
             }
         }
 
+        if (File.Exists(data.Inbox)) ImportInbox();
+
         if (File.Exists(data.ClearTamperFlag))
         {
             string? by = null;
@@ -155,6 +167,47 @@ public sealed class GuardWorker(
         }
     }
 
+    /// <summary>Repairs the installation's protection; reports what it had to repair unless this is the first run.</summary>
+    private void Harden(SessionSample sample)
+    {
+        var baseline = Hardening.HasBaseline();
+        var fixes = new Hardening(data, log).Apply();
+        if (!baseline)
+        {
+            Hardening.SetBaseline(Program.Version);
+            log.LogInformation("Protection applied for the first time ({Count} setting(s))", fixes.Count);
+            return;
+        }
+        foreach (var f in fixes) engine.ReportTamper(f.Type, f.Details, sample.User);
+        if (fixes.Count > 0) _syncNow = true;
+    }
+
+    /// <summary>Events left by the watchdog task.</summary>
+    private void ImportInbox()
+    {
+        string[] lines;
+        try
+        {
+            lines = File.ReadAllLines(data.Inbox);
+            File.Delete(data.Inbox);
+        }
+        catch (IOException)
+        {
+            return; // the watchdog is still writing; next loop
+        }
+        foreach (var line in lines.Where(l => l.Length > 0))
+        {
+            try
+            {
+                if (System.Text.Json.JsonSerializer.Deserialize<TamperEvent>(line, Json.Options) is { } e) engine.Ingest(e);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+            }
+        }
+        _syncNow = true;
+    }
+
     /// <summary>Current zone from the registry (TimeZoneInfo.Local is cached for the process lifetime).</summary>
     private static string? ReadTimeZoneKey()
     {
@@ -179,12 +232,17 @@ public sealed class GuardWorker(
         return s with { State = state, Exe = a.Exe, Product = a.Product, Title = a.Title };
     }
 
+    private string? _lastUser;
+
     private void TrackSession(SessionSample s, DateTimeOffset now)
     {
+        _lastUser = s.User;
         var active = HeartbeatStates.IsCounted(s.State) ? s.SessionId : null;
         if (active == _session) return;
         _session = active;
         _sessionSince = now;
+        _trayMissingReported = false;
+        _trayMissingSince = null;
         _lastStatusJson = null;
         _noticesSent.Clear();
     }
@@ -230,7 +288,20 @@ public sealed class GuardWorker(
 
     private void EnsureTray(uint session, Decision decision, DateTimeOffset now)
     {
-        if (!decision.Restricted || hub.IsConnected(session)) return;
+        if (!decision.Restricted) return;
+        if (hub.IsConnected(session))
+        {
+            _trayMissingSince = null;
+            _trayMissingReported = false;
+            return;
+        }
+        // The child can close the tray (it is their process); enforcement does not need it, but the admin should know.
+        _trayMissingSince ??= now;
+        if (!_trayMissingReported && now - _trayMissingSince > TrayMissingAfter)
+        {
+            _trayMissingReported = true;
+            engine.ReportTamper(TamperTypes.TrayUnresponsive, new() { ["session"] = session.ToString() }, _lastUser);
+        }
         if (now - _sessionSince < TrayGrace || now - _lastLaunch < RelaunchEvery) return;
         _lastLaunch = now;
         launcher.TryLaunch(session);

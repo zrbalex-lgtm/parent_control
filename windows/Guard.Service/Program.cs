@@ -24,6 +24,8 @@ namespace ParentControl.Service
               ParentControl.Guard.exe status          show registration, sync and today's usage
               ParentControl.Guard.exe probe           print what the guard sees on the console session
               ParentControl.Guard.exe clear-tamper    lift the lock after tampering on this PC (also works offline)
+              ParentControl.Guard.exe harden          apply folder/registry/service protection (installer runs it)
+              ParentControl.Guard.exe watchdog        start the service if it was stopped (scheduled task)
               ParentControl.Guard.exe tray            tray app for the signed-in user (started by the service)
             """;
 
@@ -66,6 +68,8 @@ namespace ParentControl.Service
                 "status" => Status(options, data),
                 "probe" => Probe(),
                 "clear-tamper" => ClearTamper(data),
+                "harden" => Harden(data),
+                "watchdog" => Watchdog(data),
                 _ => Fail($"Unknown command '{command}'.\n\n{Usage}"),
             };
         }
@@ -252,6 +256,52 @@ namespace ParentControl.Service
         {
             File.WriteAllText(data.ClearTamperFlag, Environment.UserName);
             Console.WriteLine("Requested. The service lifts the tamper lock within a few seconds and tells the admin app.");
+            return 0;
+        }
+
+        // ---------------- harden ----------------
+        /// <summary>Silent apply (no tamper events): this is the trusted baseline after install or update.</summary>
+        private static int Harden(DataDirectory data)
+        {
+            var fixes = new Hardening(data, new ConsoleLogger()).Apply();
+            Hardening.SetBaseline(Version);
+            Console.WriteLine(fixes.Count == 0 ? "Protection already in place." : $"Applied {fixes.Count} protection setting(s).");
+            return 0;
+        }
+
+        // ---------------- watchdog ----------------
+        /// <summary>Started by the scheduled task as SYSTEM: brings the service back and leaves a note for it.</summary>
+        private static int Watchdog(DataDirectory data)
+        {
+            using var sc = new System.ServiceProcess.ServiceController(ServiceName);
+            System.ServiceProcess.ServiceControllerStatus status;
+            try
+            {
+                status = sc.Status;
+            }
+            catch (InvalidOperationException)
+            {
+                return 0; // not installed
+            }
+            if (status is System.ServiceProcess.ServiceControllerStatus.Running
+                or System.ServiceProcess.ServiceControllerStatus.StartPending
+                or System.ServiceProcess.ServiceControllerStatus.ContinuePending)
+            {
+                return 0;
+            }
+
+            if (status == System.ServiceProcess.ServiceControllerStatus.Paused) sc.Continue();
+            else sc.Start();
+
+            var e = new TamperEvent
+            {
+                ClientId = Guid.NewGuid(),
+                OccurredAt = DateTimeOffset.UtcNow,
+                Type = TamperTypes.WatchdogFixed,
+                Details = new() { ["what"] = "service", ["was"] = status.ToString() },
+            };
+            File.AppendAllText(data.Inbox, System.Text.Json.JsonSerializer.Serialize(e, Json.Options) + "\n");
+            Console.WriteLine($"Service was {status}; started.");
             return 0;
         }
 

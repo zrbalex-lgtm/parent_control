@@ -20,6 +20,13 @@ $RunKey      = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
 $RunValue    = 'ParentControlTray'
 $DataDir     = Join-Path $env:ProgramData 'ParentControl'
 
+# Runs a native command whose failure is fine (e.g. the task does not exist yet); PS 5.1 would turn its stderr into an error.
+function Invoke-Quiet([scriptblock]$Command) {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Command 2>&1 | Out-Null } finally { $ErrorActionPreference = $old }
+}
+
 function Write-Step([string]$Text) { Write-Host "==> $Text" -ForegroundColor Cyan }
 function Wait-End { if (-not $NoPause) { [void](Read-Host 'Нажми Enter, чтобы закрыть окно') } }
 
@@ -37,6 +44,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 try {
     Set-Location $env:TEMP   # never hold the install folder open
 
+    Write-Step 'Удаляю задачу-сторож'
+    Invoke-Quiet { & schtasks.exe /Delete /TN 'ParentControl Watchdog' /F }
+
     Write-Step 'Останавливаю службу и трей'
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($svc -and $svc.Status -ne 'Stopped') {
@@ -48,6 +58,9 @@ try {
     if ($svc) {
         Write-Step 'Удаляю службу'
         & sc.exe delete $ServiceName | Out-Null
+    }
+    foreach ($mode in 'Minimal', 'Network') {
+        Remove-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\$mode\$ServiceName" -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     Write-Step 'Убираю автозапуск трея'

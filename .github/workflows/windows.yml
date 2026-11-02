@@ -55,6 +55,9 @@ jobs:
           if ($run -notlike '*ParentControl.Guard.exe" tray') { throw "run key: $run" }
           $fail = & sc.exe qfailure ParentControlGuard | Out-String
           if ($fail -notmatch 'RESTART') { throw "recovery not set: $fail" }
+          if (-not (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\Minimal\ParentControlGuard')) { throw 'safe mode key missing' }
+          & schtasks.exe /Query /TN 'ParentControl Watchdog' | Out-Null
+          if ($LASTEXITCODE) { throw 'watchdog task missing' }
           Write-Host 'install ok'
 
           # Fail-safe: the service keeps running without appsettings.json and after the data folder is wiped.
@@ -72,6 +75,11 @@ jobs:
           if (Test-Path "$env:ProgramData\ParentControl\clear-tamper.flag") { throw 'clear-tamper flag not picked up' }
           & "$dir\ParentControl.Guard.exe" status
           if ($LASTEXITCODE) { throw "status failed: $LASTEXITCODE" }
+          # Watchdog brings a stopped service back.
+          Stop-Service ParentControlGuard
+          & "$dir\ParentControl.Guard.exe" watchdog
+          Start-Sleep -Seconds 5
+          if ((Get-Service ParentControlGuard).Status -ne 'Running') { throw 'watchdog did not start the service' }
           Write-Host 'fail-safe ok'
 
           & .\publish\guard\install.ps1 -NoRegister -NoPause -InstallDir $dir
@@ -87,6 +95,8 @@ jobs:
           }
           if (Test-Path $dir) { throw 'install folder left' }
           if (Test-Path 'HKLM:\SOFTWARE\ParentControl') { throw 'registry backup left' }
+          & schtasks.exe /Query /TN 'ParentControl Watchdog' 2>&1 | Out-Null
+          if (-not $LASTEXITCODE) { throw 'watchdog task left' }
           if ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run').ParentControlTray) { throw 'run key left' }
           Write-Host 'uninstall ok'
 

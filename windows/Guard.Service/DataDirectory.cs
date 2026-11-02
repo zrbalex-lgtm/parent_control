@@ -20,6 +20,8 @@ public sealed class DataDirectory
     public string Queue => Path.Combine(Root, "queue.jsonl");
     public string Tamper => Path.Combine(Root, "tamper.jsonl");
     /// <summary>Dropped by the clear-tamper command; picked up by the running service.</summary>
+    /// <summary>Events written by the watchdog task; the service uploads and deletes them.</summary>
+    public string Inbox => Path.Combine(Root, "inbox.jsonl");
     public string ClearTamperFlag => Path.Combine(Root, "clear-tamper.flag");
 
     public static bool IsElevated()

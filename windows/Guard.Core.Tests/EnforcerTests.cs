@@ -10,8 +10,12 @@ public class EnforcerTests
         public List<string> Messages { get; } = [];
         public List<uint> Disconnects { get; } = [];
         public void Warn(uint sessionId, int minutesLeft) => Messages.Add(Texts.Warn(minutesLeft));
-        public void ShowLock(uint sessionId, LockReason reason, Decision d, TimeSpan grace) =>
+        public List<TimeSpan> Graces { get; } = [];
+        public void ShowLock(uint sessionId, LockReason reason, Decision d, TimeSpan grace)
+        {
+            Graces.Add(grace);
             Messages.Add(Texts.Lock(reason, d.WindowFrom, d.WindowTo));
+        }
         public bool Disconnect(uint sessionId) { Disconnects.Add(sessionId); return true; }
     }
 
@@ -128,5 +132,27 @@ public class EnforcerTests
     {
         _enf.Apply(Active(), Locked(LockReason.Window));
         Assert.Contains("15:00–20:00", _ctl.Messages[0]);
+    }
+
+    [Fact]
+    public void Quick_relogin_after_a_lock_gets_a_short_grace()
+    {
+        _enf.Apply(Active(), Locked());
+        _time.Advance(Enforcer.Grace);
+        _enf.Apply(Active(), Locked());
+        _enf.Apply(new SessionSample(HeartbeatStates.NoUser), Decision.Unrestricted);
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        _enf.Apply(Active(3), Locked());
+        _time.Advance(Enforcer.RepeatGrace);
+        _enf.Apply(Active(3), Locked());
+        Assert.Equal(new[] { Enforcer.Grace, Enforcer.RepeatGrace }, _ctl.Graces.ToArray());
+        Assert.Equal(new uint[] { 2, 3 }, _ctl.Disconnects);
+
+        // Much later the full grace is back.
+        _enf.Apply(new SessionSample(HeartbeatStates.NoUser), Decision.Unrestricted);
+        _time.Advance(Enforcer.RepeatWindow);
+        _enf.Apply(Active(4), Locked());
+        Assert.Equal(Enforcer.Grace, _ctl.Graces[^1]);
     }
 }

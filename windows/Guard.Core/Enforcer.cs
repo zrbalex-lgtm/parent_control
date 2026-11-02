@@ -25,6 +25,12 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
     public static readonly TimeSpan Grace = TimeSpan.FromSeconds(20);
     public static readonly int[] WarnAt = [10, 5, 1];
 
+    /// <summary>Signing in again right after a lock only shows the reason briefly: re-login gives no free minutes.</summary>
+    public static readonly TimeSpan RepeatGrace = TimeSpan.FromSeconds(8);
+    public static readonly TimeSpan RepeatWindow = TimeSpan.FromMinutes(10);
+
+    private readonly Dictionary<Guid, DateTimeOffset> _lastDisconnect = [];
+
     private uint? _pendingSession;
     private DateTimeOffset _disconnectAt;
     private readonly HashSet<string> _warned = [];
@@ -43,13 +49,15 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
             var now = time.GetUtcNow();
             if (_pendingSession != session)
             {
-                control.ShowLock(session, reason, decision, Grace);
+                var grace = GraceFor(decision.ChildId, now);
+                control.ShowLock(session, reason, decision, grace);
                 _pendingSession = session;
-                _disconnectAt = now + Grace;
-                log.LogInformation("Locking {Child} ({Reason}) in {Grace}s", decision.ChildName, reason, Grace.TotalSeconds);
+                _disconnectAt = now + grace;
+                log.LogInformation("Locking {Child} ({Reason}) in {Grace}s", decision.ChildName, reason, grace.TotalSeconds);
             }
             else if (now >= _disconnectAt)
             {
+                if (decision.ChildId is { } child) _lastDisconnect[child] = now;
                 var ok = control.Disconnect(session);
                 log.LogInformation("Disconnected session {Session} of {Child} ({Reason}): {Result}",
                     session, decision.ChildName, reason, ok ? "ok" : "FAILED");
@@ -61,6 +69,9 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
         _pendingSession = null;
         Warn(session, decision);
     }
+
+    public TimeSpan GraceFor(Guid? child, DateTimeOffset now) =>
+        child is { } c && _lastDisconnect.TryGetValue(c, out var at) && now - at < RepeatWindow ? RepeatGrace : Grace;
 
     private void Warn(uint session, Decision d)
     {

@@ -242,9 +242,8 @@ public sealed class GuardEngine
     // ---------------- tamper ----------------
 
     /// <summary>Queues a tamper event and, for lock events, locks child accounts unless the admin chose "notify".</summary>
-    public void ReportTamper(string type, Dictionary<string, string?>? details = null, string? user = null)
-    {
-        _tamper.Enqueue(new TamperEvent
+    public void ReportTamper(string type, Dictionary<string, string?>? details = null, string? user = null) =>
+        Ingest(new TamperEvent
         {
             ClientId = Guid.NewGuid(),
             OccurredAt = _time.GetUtcNow(),
@@ -252,11 +251,16 @@ public sealed class GuardEngine
             Details = details,
             User = user,
         });
-        _log.LogWarning("Tamper event {Type} {Details}", type,
-            details is null ? "" : string.Join(", ", details.Select(kv => $"{kv.Key}={kv.Value}")));
+
+    /// <summary>Queues an event produced here or by a helper process (watchdog inbox).</summary>
+    public void Ingest(TamperEvent e)
+    {
+        _tamper.Enqueue(e);
+        _log.LogWarning("Tamper event {Type} {Details}", e.Type,
+            e.Details is null ? "" : string.Join(", ", e.Details.Select(kv => $"{kv.Key}={kv.Value}")));
 
         var action = State.LastSync?.TamperAction ?? TamperActions.Lock;
-        if (TamperTypes.IsLockEvent(type) && action == TamperActions.Lock && !State.TamperLocked)
+        if (TamperTypes.IsLockEvent(e.Type) && action == TamperActions.Lock && !State.TamperLocked)
         {
             State.TamperLocked = true;
             State.TamperLockedAt = _time.GetUtcNow();

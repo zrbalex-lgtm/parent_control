@@ -99,3 +99,16 @@ public sealed class FileLoggerProvider : ILoggerProvider
         }
     }
 }
+
+/// <summary>Plain console logger for command-line tools.</summary>
+public sealed class ConsoleLogger : Microsoft.Extensions.Logging.ILogger
+{
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => logLevel >= Microsoft.Extensions.Logging.LogLevel.Information;
+
+    public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+        TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        if (IsEnabled(logLevel)) Console.WriteLine($"{logLevel}: {formatter(state, exception)}");
+    }
+}
