@@ -33,33 +33,255 @@ public sealed class GuardEngine
     public const int BatchSize = 500;
     private const int MaxBatchesPerSync = 10;
 
+    public static readonly TimeSpan BeaconEvery = TimeSpan.FromMinutes(10);
+
     private readonly IGuardApi _api;
     private readonly HeartbeatQueue _queue;
     private readonly StateStore _stateStore;
     private readonly CredentialStore _credStore;
+    private readonly IBackupStore _backup;
+    private readonly TamperQueue _tamper;
     private readonly TimeProvider _time;
     private readonly ILogger _log;
     private readonly string _clientVersion;
+    private DeviceCredentials? _creds;
     private DateTimeOffset? _lastMinute;
     private string? _lastLoggedError;
     private DateTimeOffset _lastErrorLogAt;
 
     public GuardEngine(
         IGuardApi api, HeartbeatQueue queue, StateStore stateStore, CredentialStore credStore,
-        TimeProvider time, ILogger<GuardEngine> log, string clientVersion)
+        TimeProvider time, ILogger<GuardEngine> log, string clientVersion,
+        IBackupStore? backup = null, TamperQueue? tamper = null, bool readOnly = false)
     {
         _api = api;
         _queue = queue;
         _stateStore = stateStore;
         _credStore = credStore;
+        _backup = backup ?? NullBackupStore.Instance;
+        _tamper = tamper ?? new TamperQueue(null);
         _time = time;
         _log = log;
         _clientVersion = clientVersion;
         State = stateStore.Load();
+        if (readOnly)
+        {
+            // Inspection only (status command): never write while the service owns the files.
+            _creds = credStore.Load() ?? SafeLoadBackup()?.Credentials;
+            return;
+        }
+        RestoreFromBackup();
     }
 
     public GuardState State { get; }
     public int QueueLength => _queue.Count;
+    public int TamperQueueLength => _tamper.Count;
+
+    /// <summary>This PC can talk to the server as a registered device.</summary>
+    public bool HasCredentials => _creds is not null;
+
+    /// <summary>Registration is gone, but the PC used to be set up (it still knows the server's settings).</summary>
+    public bool ConfigLost => _creds is null && State.LastSync is not null;
+
+    // ---------------- backup and restore ----------------
+
+    /// <summary>
+    /// Brings back whatever is missing from the data folder using the backup, and reports it.
+    /// Usage minutes are merged both ways, so the larger count always wins.
+    /// </summary>
+    private void RestoreFromBackup()
+    {
+        var backup = SafeLoadBackup();
+        var restored = new List<string>();
+
+        _creds = _credStore.Load();
+        if (_creds is null && backup?.Credentials is { } bc)
+        {
+            _creds = bc;
+            TrySaveCredentials(bc);
+            restored.Add("device.json");
+        }
+
+        if (State.LastSync is null && backup?.LastSync is not null)
+        {
+            State.LastSync = backup.LastSync;
+            State.LastSyncAt = backup.LastSyncAt;
+            restored.Add("state.json");
+        }
+
+        if (backup is not null)
+        {
+            foreach (var (date, bySid) in backup.Usage)
+            {
+                foreach (var (sid, ranges) in bySid)
+                {
+                    foreach (var m in UsageRanges.FromRanges(ranges))
+                    {
+                        State.AddUsage(date, sid, DateTimeOffset.FromUnixTimeSeconds(m * 60));
+                    }
+                }
+            }
+            if (backup.TamperLocked && !State.TamperLocked)
+            {
+                State.TamperLocked = true;
+                State.TamperLockedAt ??= _time.GetUtcNow();
+            }
+        }
+
+        if (_creds is not null) State.KnownDeviceId = _creds.DeviceId;
+        State.KnownDeviceId ??= backup?.DeviceId;
+
+        if (restored.Count > 0)
+        {
+            _log.LogWarning("Restored from backup: {Files}", string.Join(", ", restored));
+            ReportTamper(TamperTypes.ConfigRestored, new() { ["files"] = string.Join(",", restored) });
+        }
+        else
+        {
+            SaveState();
+        }
+    }
+
+    private GuardBackup? SafeLoadBackup()
+    {
+        try
+        {
+            return _backup.Load();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("Cannot read backup: {Message}", ex.Message);
+            return null;
+        }
+    }
+
+    private void SaveBackup()
+    {
+        try
+        {
+            _backup.Save(new GuardBackup
+            {
+                Credentials = _creds,
+                DeviceId = _creds?.DeviceId ?? State.KnownDeviceId,
+                LastSync = State.LastSync,
+                LastSyncAt = State.LastSyncAt,
+                Usage = UsageRanges.Pack(State.Usage),
+                TamperLocked = State.TamperLocked,
+            });
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning("Cannot write backup: {Message}", ex.Message);
+        }
+    }
+
+    private void TrySaveCredentials(DeviceCredentials creds)
+    {
+        try
+        {
+            _credStore.Save(creds);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log.LogWarning("Cannot write device.json: {Message}", ex.Message);
+        }
+    }
+
+    /// <summary>Saves state.json and the backup; a vanished state.json is reported once it is noticed.</summary>
+    private void SaveState()
+    {
+        try
+        {
+            _stateStore.Save(State);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log.LogWarning("Cannot write state.json: {Message}", ex.Message);
+        }
+        SaveBackup();
+    }
+
+    /// <summary>
+    /// Re-reads device.json: a newer registration (register command) wins; a deleted file is rewritten from memory.
+    /// </summary>
+    private void RefreshCredentials()
+    {
+        var file = _credStore.Load();
+        if (file is not null)
+        {
+            if (file != _creds)
+            {
+                if (_creds is not null) _log.LogInformation("Device registration changed to {Id}", file.DeviceId);
+                _creds = file;
+                State.KnownDeviceId = file.DeviceId;
+                SaveBackup();
+            }
+            return;
+        }
+        if (_creds is null) return;
+
+        _log.LogWarning("device.json is missing; restoring it");
+        TrySaveCredentials(_creds);
+        ReportTamper(TamperTypes.ConfigRestored, new() { ["files"] = "device.json" });
+    }
+
+    /// <summary>Reports a change of the Windows time zone (a standard user can change it to shift the allowed hours).</summary>
+    public void NoteTimeZone(string? zone, string? user)
+    {
+        if (string.IsNullOrEmpty(zone) || zone == State.TimeZone) return;
+        var previous = State.TimeZone;
+        State.TimeZone = zone;
+        if (previous is null)
+        {
+            SaveState();
+            return;
+        }
+        ReportTamper(TamperTypes.ClockChanged, new() { ["kind"] = "timezone", ["from"] = previous, ["to"] = zone }, user);
+    }
+
+    // ---------------- tamper ----------------
+
+    /// <summary>Queues a tamper event and, for lock events, locks child accounts unless the admin chose "notify".</summary>
+    public void ReportTamper(string type, Dictionary<string, string?>? details = null, string? user = null)
+    {
+        _tamper.Enqueue(new TamperEvent
+        {
+            ClientId = Guid.NewGuid(),
+            OccurredAt = _time.GetUtcNow(),
+            Type = type,
+            Details = details,
+            User = user,
+        });
+        _log.LogWarning("Tamper event {Type} {Details}", type,
+            details is null ? "" : string.Join(", ", details.Select(kv => $"{kv.Key}={kv.Value}")));
+
+        var action = State.LastSync?.TamperAction ?? TamperActions.Lock;
+        if (TamperTypes.IsLockEvent(type) && action == TamperActions.Lock && !State.TamperLocked)
+        {
+            State.TamperLocked = true;
+            State.TamperLockedAt = _time.GetUtcNow();
+            _log.LogWarning("Tamper lock is on");
+        }
+        SaveState();
+    }
+
+    /// <summary>Local override by an administrator on this PC (clear-tamper command); the server is told too.</summary>
+    public void ClearTamperLocally(string? by)
+    {
+        var was = State.TamperLocked;
+        State.TamperLocked = false;
+        State.TamperLockedAt = null;
+        _log.LogWarning("Tamper lock cleared locally (was {Was})", was ? "on" : "off");
+        // Not a lock event: queue it without re-locking.
+        _tamper.Enqueue(new TamperEvent
+        {
+            ClientId = Guid.NewGuid(),
+            OccurredAt = _time.GetUtcNow(),
+            Type = TamperTypes.TamperClearedLocally,
+            User = by,
+        });
+        SaveState();
+    }
 
     public DateOnly LocalToday => DateOnly.FromDateTime(_time.GetLocalNow().DateTime);
 
@@ -96,19 +318,41 @@ public sealed class GuardEngine
             State.AddUsage(localDate, hb.Sid, minute);
         }
         State.PruneUsage(localDate);
-        _stateStore.Save(State);
+        if (!_stateStore.Exists)
+        {
+            // The service writes state.json every minute, so a missing file means someone deleted it.
+            ReportTamper(TamperTypes.ConfigRestored, new() { ["files"] = "state.json" }, sample.User);
+        }
+        else
+        {
+            SaveState();
+        }
         return hb;
     }
 
     /// <summary>Uploads queued heartbeats and refreshes settings; never throws on network errors.</summary>
     public async Task<SyncOutcome> SyncAsync(CancellationToken ct)
     {
-        var creds = _credStore.Load();
-        if (creds is null) return SyncOutcome.NotRegistered;
+        RefreshCredentials();
+        var creds = _creds;
+        if (creds is null)
+        {
+            await BeaconIfLostAsync(ct);
+            return SyncOutcome.NotRegistered;
+        }
 
         State.LastSyncAttemptAt = _time.GetUtcNow();
         try
         {
+            // Tamper events first, so the sync answer already reflects a lock they cause.
+            var events = _tamper.Snapshot();
+            if (events.Count > 0)
+            {
+                var report = await _api.ReportAsync(creds, events, ct);
+                _tamper.Remove(events);
+                _log.LogInformation("Reported {Count} tamper event(s), server lock: {Locked}", events.Count, report.TamperLocked);
+            }
+
             SyncResponse? last = null;
             for (var i = 0; i < MaxBatchesPerSync; i++)
             {
@@ -136,6 +380,7 @@ public sealed class GuardEngine
             State.LastSync = last;
             State.LastSyncAt = _time.GetUtcNow();
             State.LastSyncError = null;
+            ApplyServerTamperLock(last);
             if (State.Unauthorized) _log.LogInformation("Device accepted by server again");
             State.Unauthorized = false;
             _lastLoggedError = null;
@@ -165,8 +410,49 @@ public sealed class GuardEngine
         }
         finally
         {
-            _stateStore.Save(State);
+            SaveState();
         }
+    }
+
+    /// <summary>The server is the authority once our events are uploaded; offline, the local lock stays.</summary>
+    private void ApplyServerTamperLock(SyncResponse? r)
+    {
+        if (r is null) return;
+        if (r.TamperLocked && !State.TamperLocked)
+        {
+            State.TamperLocked = true;
+            State.TamperLockedAt = _time.GetUtcNow();
+            _log.LogWarning("Server reports a tamper lock");
+        }
+        else if (!r.TamperLocked && State.TamperLocked && _tamper.Count == 0)
+        {
+            State.TamperLocked = false;
+            State.TamperLockedAt = null;
+            _log.LogInformation("Tamper lock cleared by the server");
+        }
+    }
+
+    /// <summary>Tells the server the PC lost its registration (at most every 10 minutes).</summary>
+    private async Task BeaconIfLostAsync(CancellationToken ct)
+    {
+        if (!ConfigLost) return;
+        var now = _time.GetUtcNow();
+        if (State.LastBeaconAt is { } at && now - at < BeaconEvery) return;
+        State.LastBeaconAt = now;
+        try
+        {
+            await _api.BeaconAsync(Environment.MachineName, "device.json and backup missing", State.KnownDeviceId, ct);
+            _log.LogWarning("Registration lost; sent a beacon to the server");
+        }
+        catch (ApiException ex)
+        {
+            _log.LogWarning("Beacon failed: {Message}", ex.Message);
+        }
+        catch (DeviceUnauthorizedException ex)
+        {
+            _log.LogWarning("Beacon rejected: {Message}", ex.Message);
+        }
+        SaveState();
     }
 
     // ---------------- time requests ----------------
@@ -182,7 +468,7 @@ public sealed class GuardEngine
         reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         if (reason is { Length: > 200 }) reason = reason[..200];
         State.PendingRequests.Add(new TimeRequestOut(Guid.NewGuid(), sid, Math.Clamp(minutes, 5, 240), reason, kind));
-        _stateStore.Save(State);
+        SaveState();
         _log.LogInformation("Request queued ({Kind}): {Minutes} min for child {Child}", kind, minutes, child);
         return RequestTimeResult.Queued;
     }
@@ -207,7 +493,7 @@ public sealed class GuardEngine
         // Server keeps decided requests for 24h; drop ids it no longer sends.
         var live = (State.LastSync?.Requests ?? new List<RequestInfo>()).Select(r => r.Id).ToHashSet();
         State.NotifiedRequests.RemoveWhere(x => x != id && !live.Contains(x));
-        _stateStore.Save(State);
+        SaveState();
     }
 
     // ---------------- admin messages ----------------
@@ -229,7 +515,7 @@ public sealed class GuardEngine
                 State.ShownMessages.Remove(old);
             }
         }
-        _stateStore.Save(State);
+        SaveState();
     }
 
     // ---------------- queries used by enforcement and status ----------------

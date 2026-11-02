@@ -10,7 +10,17 @@ public static class Texts
         LockReason.Limit => "Время за компьютером на сегодня закончилось.",
         LockReason.Window => $"Сейчас компьютер недоступен.\nРазрешённое время: {windowFrom}–{windowTo}.",
         LockReason.NotUnlocked => "Доступ на сегодня ещё не открыт.",
+        LockReason.Tamper => "Обнаружено вмешательство в работу программы.\nКомпьютер заблокирован до проверки.",
+        LockReason.NotConfigured => "Программа экранного времени не настроена.\nКомпьютер недоступен до настройки.",
         _ => "Компьютер заблокирован.",
+    };
+
+    /// <summary>Short status line for the tray window.</summary>
+    public static string LockShort(string? reason) => reason switch
+    {
+        nameof(LockReason.NotUnlocked) => "Доступ закрыт",
+        nameof(LockReason.Tamper) or nameof(LockReason.NotConfigured) => "Заблокировано",
+        _ => "Время вышло",
     };
 
     public const string LockFooter = "Сейчас будет выход на экран входа. Программы останутся открытыми.";

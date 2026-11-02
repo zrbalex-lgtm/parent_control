@@ -48,6 +48,24 @@ internal sealed class FakeApi : IGuardApi
 
     public Task<RegisterResult> RegisterAsync(string code, string machineName, string clientVersion, CancellationToken ct) =>
         Task.FromResult(new RegisterResult(Guid.NewGuid(), "secret"));
+
+    public List<IReadOnlyList<TamperEvent>> Reports { get; } = [];
+    public bool ServerTamperLocked { get; set; }
+    public List<(string Machine, string Reason, Guid? DeviceId)> Beacons { get; } = [];
+
+    public Task<ReportResult> ReportAsync(DeviceCredentials creds, IReadOnlyList<TamperEvent> events, CancellationToken ct)
+    {
+        if (Throw is not null) throw Throw;
+        Reports.Add(events);
+        return Task.FromResult(new ReportResult(events.Count, ServerTamperLocked));
+    }
+
+    public Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct)
+    {
+        if (Throw is not null) throw Throw;
+        Beacons.Add((machineName, reason, deviceId));
+        return Task.CompletedTask;
+    }
 }
 
 internal static class Hb

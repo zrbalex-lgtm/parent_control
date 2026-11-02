@@ -57,6 +57,23 @@ jobs:
           if ($fail -notmatch 'RESTART') { throw "recovery not set: $fail" }
           Write-Host 'install ok'
 
+          # Fail-safe: the service keeps running without appsettings.json and after the data folder is wiped.
+          if (-not (Test-Path 'HKLM:\SOFTWARE\ParentControl')) { throw 'registry backup key missing' }
+          Stop-Service ParentControlGuard
+          Remove-Item "$dir\appsettings.json" -Force
+          Remove-Item "$env:ProgramData\ParentControl" -Recurse -Force
+          Start-Service ParentControlGuard
+          Start-Sleep -Seconds 8
+          if ((Get-Service ParentControlGuard).Status -ne 'Running') { throw 'service did not start without config' }
+          if (-not (Test-Path "$env:ProgramData\ParentControl\state.json")) { throw 'data folder not recreated' }
+          & "$dir\ParentControl.Guard.exe" clear-tamper
+          if ($LASTEXITCODE) { throw "clear-tamper failed: $LASTEXITCODE" }
+          Start-Sleep -Seconds 8
+          if (Test-Path "$env:ProgramData\ParentControl\clear-tamper.flag") { throw 'clear-tamper flag not picked up' }
+          & "$dir\ParentControl.Guard.exe" status
+          if ($LASTEXITCODE) { throw "status failed: $LASTEXITCODE" }
+          Write-Host 'fail-safe ok'
+
           & .\publish\guard\install.ps1 -NoRegister -NoPause -InstallDir $dir
           if ($LASTEXITCODE) { throw "update failed: $LASTEXITCODE" }
           if ((Get-Service ParentControlGuard).Status -ne 'Running') { throw 'service not running after update' }
@@ -69,6 +86,7 @@ jobs:
             if ($s) { throw 'service still installed' }
           }
           if (Test-Path $dir) { throw 'install folder left' }
+          if (Test-Path 'HKLM:\SOFTWARE\ParentControl') { throw 'registry backup left' }
           if ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run').ParentControlTray) { throw 'run key left' }
           Write-Host 'uninstall ok'
 

@@ -62,7 +62,14 @@ try {
     if ($RemoveData -and (Test-Path $DataDir)) {
         Write-Step "Удаляю данные $DataDir"
         Remove-Item -Path $DataDir -Recurse -Force
-    } elseif (Test-Path $DataDir) {
+    }
+    # Registry backup of the registration (restored automatically unless removed too).
+    $BackupKey = 'HKLM:\SOFTWARE\ParentControl'
+    if ($RemoveData -and (Test-Path $BackupKey)) {
+        Write-Step "Удаляю резервную копию в реестре"
+        Remove-Item -Path $BackupKey -Recurse -Force
+    }
+    if (-not $RemoveData -and (Test-Path $DataDir)) {
         Write-Host "    Данные и регистрация оставлены в $DataDir (удалить: -RemoveData)."
     }
 

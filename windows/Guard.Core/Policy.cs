@@ -1,6 +1,25 @@
 namespace ParentControl.Core;
 
-public enum LockReason { Window, Limit, Command, NotUnlocked }
+public enum LockReason
+{
+    Window,
+    Limit,
+    Command,
+    NotUnlocked,
+    /// <summary>Someone interfered with the guard; until the admin clears it.</summary>
+    Tamper,
+    /// <summary>Registration is gone; only accounts known as children are blocked.</summary>
+    NotConfigured,
+}
+
+public static class LockReasons
+{
+    /// <summary>Locks the child cannot ask more time for.</summary>
+    public static bool AllowsRequest(LockReason r) => r is not (LockReason.Tamper or LockReason.NotConfigured);
+
+    public static bool AllowsRequest(string? name) =>
+        !Enum.TryParse<LockReason>(name, out var r) || AllowsRequest(r);
+}
 
 public static class RemainingReasons
 {
@@ -34,8 +53,14 @@ public sealed record Decision
 }
 
 /// <summary>Pure decision logic over the engine's cached server state.</summary>
-public sealed class Policy(GuardEngine engine, TimeProvider time)
+/// <remarks>
+/// Fail-closed reasons (tamper lock, lost registration) never apply to local administrators:
+/// whoever can repair the PC must always be able to sign in.
+/// </remarks>
+public sealed class Policy(GuardEngine engine, TimeProvider time, IAdminCheck? admins = null)
 {
+    private readonly IAdminCheck _admins = admins ?? NoAdmins.Instance;
+
     public Decision Evaluate(string? sid)
     {
         var sync = engine.State.LastSync;
@@ -44,6 +69,12 @@ public sealed class Policy(GuardEngine engine, TimeProvider time)
         var childId = engine.ChildOf(sid);
         if (childId is null) return Decision.Unrestricted;
         var child = sync.Children.FirstOrDefault(c => c.ChildId == childId);
+
+        // Fail-closed checks come first and do not depend on the schedule.
+        var failClosed = engine.ConfigLost ? LockReason.NotConfigured
+            : engine.State.TamperLocked ? LockReason.Tamper
+            : (LockReason?)null;
+        if (failClosed is not null && sid is not null && IsAdmin(sid)) failClosed = null;
 
         var nowUtc = time.GetUtcNow();
         var nowLocal = time.GetLocalNow();
@@ -78,7 +109,8 @@ public sealed class Policy(GuardEngine engine, TimeProvider time)
             .Min();
 
         LockReason? reason =
-            activeLock ? LockReason.Command
+            failClosed is not null ? failClosed
+            : activeLock ? LockReason.Command
             : !inWindow ? LockReason.Window
             : day is { RequiresUnlock: true, Unlocked: false } ? LockReason.NotUnlocked
             : allowed is { } a && spent >= a ? LockReason.Limit
@@ -115,7 +147,18 @@ public sealed class Policy(GuardEngine engine, TimeProvider time)
         };
     }
 
-    private static int? Min(int? a, int? b) => a is null ? b : b is null ? a : Math.Min(a.Value, b.Value);
+    private bool IsAdmin(string sid)
+    {
+        try
+        {
+            return _admins.IsAdmin(sid);
+        }
+        catch (Exception)
+        {
+            // Unknown: treat as admin so a failing lookup can never lock out the repair account.
+            return true;
+        }
+    }
 
     /// <summary>"15:00" -> 900, "24:00" -> 1440.</summary>
     internal static int? ParseTime(string? hhmm)

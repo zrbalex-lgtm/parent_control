@@ -12,11 +12,12 @@ Supabase project (one schema per home project; Auth is shared).
 | `migrations/005_locked_by_default.sql` | `day_unlocks`, unlock requests, `fn_day_access`, `settings` |
 | `migrations/006_child_locked_by_default.sql` | `children.locked_by_default` (per child) |
 | `migrations/007_hardening.sql` | `tamper_events`, `device_report`, `device_beacon`, tamper lock, admin RPCs |
+| `migrations/008_local_tamper_clear.sql` | `device_report` applies events in order; `tamper_cleared_locally` lifts the lock |
 | `tests/` | Local test run against plain PostgreSQL (with a Supabase stub) |
 
 ## Applying to Supabase
 
-1. Run the migrations in order: `001` … `007`.
+1. Run the migrations in order: `001` … `008`.
 2. Settings → API (Data API) → **Exposed schemas**: add `parent_control`.
 3. Auth → Providers → Email: **disable sign-ups** (shared by all home projects).
 4. Create the parent user (Auth → Users → Add user), then:
@@ -88,3 +89,5 @@ Response gets `"requests": [{"id", "client_id", "child_id", "minutes", "granted_
 - `device_beacon(p_machine_name, p_reason, p_device_id)` — unauthenticated "config lost" signal, rate limited.
 - `device_sync` response adds `tamper_locked`, `tamper_action`.
 - Admin: `admin_clear_tamper_lock(device_id)`, `admin_mark_tamper_handled(ids[])`.
+- Since 008: event `tamper_cleared_locally` (sent after `ParentControl.Guard.exe clear-tamper` on the PC) clears the lock;
+  events are applied in order, so a lock event after it locks again.

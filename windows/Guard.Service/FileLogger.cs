@@ -14,7 +14,14 @@ public sealed class FileLoggerProvider : ILoggerProvider
     public FileLoggerProvider(string dir)
     {
         _dir = dir;
-        Directory.CreateDirectory(_dir);
+        try
+        {
+            Directory.CreateDirectory(_dir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Logging must never stop the service from starting.
+        }
         Cleanup();
     }
 
@@ -38,6 +45,8 @@ public sealed class FileLoggerProvider : ILoggerProvider
         {
             try
             {
+                // The folder may have been deleted while the service runs.
+                if (!Directory.Exists(_dir)) Directory.CreateDirectory(_dir);
                 File.AppendAllText(path, sb.ToString());
                 if (path != _currentPath)
                 {
@@ -45,7 +54,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
                     Cleanup();
                 }
             }
-            catch (IOException)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 // Logging must never break enforcement.
             }

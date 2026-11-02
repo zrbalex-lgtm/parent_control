@@ -136,7 +136,8 @@ internal sealed class TrayContext : ApplicationContext
                 CloseLock();
                 _lockForm = new LockForm(m.Text ?? Texts.Title, m.Seconds ?? 20,
                     unlockMode: m.LockReason == nameof(LockReason.NotUnlocked),
-                    _status?.RequestMinutes, _status?.RequestKind);
+                    _status?.RequestMinutes, _status?.RequestKind,
+                    allowRequest: LockReasons.AllowsRequest(m.LockReason));
                 _lockForm.RequestSubmitted += RequestTime;
                 _lockForm.Show();
                 break;

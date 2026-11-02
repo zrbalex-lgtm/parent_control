@@ -23,6 +23,7 @@ namespace ParentControl.Service
               ParentControl.Guard.exe register CODE   register this PC with a one-time code from the admin app
               ParentControl.Guard.exe status          show registration, sync and today's usage
               ParentControl.Guard.exe probe           print what the guard sees on the console session
+              ParentControl.Guard.exe clear-tamper    lift the lock after tampering on this PC (also works offline)
               ParentControl.Guard.exe tray            tray app for the signed-in user (started by the service)
             """;
 
@@ -54,7 +55,8 @@ namespace ParentControl.Service
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Cannot prepare data folder {data.Root}: {ex.Message}");
-                return 3;
+                // The service must keep enforcing from memory and the registry backup; tools may stop here.
+                if (command is not (null or "run")) return 3;
             }
 
             return command switch
@@ -63,6 +65,7 @@ namespace ParentControl.Service
                 "register" => await RegisterAsync(args, options, data),
                 "status" => Status(options, data),
                 "probe" => Probe(),
+                "clear-tamper" => ClearTamper(data),
                 _ => Fail($"Unknown command '{command}'.\n\n{Usage}"),
             };
         }
@@ -73,15 +76,25 @@ namespace ParentControl.Service
             return 2;
         }
 
+        /// <summary>appsettings.json is optional: the server address is built in, so deleting the file changes nothing.</summary>
         private static GuardOptions LoadOptions()
         {
-            var config = new ConfigurationBuilder()
-                .SetBasePath(AppContext.BaseDirectory)
-                .AddJsonFile("appsettings.json", optional: false)
-                .Build();
             var options = new GuardOptions();
-            config.GetSection("Guard").Bind(options);
-            return options;
+            try
+            {
+                var config = new ConfigurationBuilder()
+                    .SetBasePath(AppContext.BaseDirectory)
+                    .AddJsonFile("appsettings.json", optional: true)
+                    .Build();
+                config.GetSection("Guard").Bind(options);
+            }
+            catch (Exception ex)
+            {
+                // A broken file must not stop the service either.
+                Console.Error.WriteLine($"Ignoring appsettings.json: {ex.Message}");
+                options = new GuardOptions();
+            }
+            return BuiltInConfig.ApplyTo(options);
         }
 
         // ---------------- run ----------------
@@ -103,6 +116,9 @@ namespace ParentControl.Service
             builder.Services.AddSingleton(_ => new HeartbeatQueue(data.Queue));
             builder.Services.AddSingleton(_ => new StateStore(data.State));
             builder.Services.AddSingleton(_ => new CredentialStore(data.Credentials));
+            builder.Services.AddSingleton<IBackupStore, RegistryBackupStore>();
+            builder.Services.AddSingleton(_ => new TamperQueue(data.Tamper));
+            builder.Services.AddSingleton<IAdminCheck, LocalAdmins>();
             builder.Services.AddSingleton<ISessionProbe, WindowsSessionProbe>();
             builder.Services.AddSingleton(sp => new GuardEngine(
                 sp.GetRequiredService<IGuardApi>(),
@@ -111,8 +127,11 @@ namespace ParentControl.Service
                 sp.GetRequiredService<CredentialStore>(),
                 sp.GetRequiredService<TimeProvider>(),
                 sp.GetRequiredService<ILogger<GuardEngine>>(),
-                Version));
-            builder.Services.AddSingleton(sp => new Policy(sp.GetRequiredService<GuardEngine>(), sp.GetRequiredService<TimeProvider>()));
+                Version,
+                sp.GetRequiredService<IBackupStore>(),
+                sp.GetRequiredService<TamperQueue>()));
+            builder.Services.AddSingleton(sp => new Policy(
+                sp.GetRequiredService<GuardEngine>(), sp.GetRequiredService<TimeProvider>(), sp.GetRequiredService<IAdminCheck>()));
             builder.Services.AddSingleton<TrayHub>();
             builder.Services.AddHostedService(sp => sp.GetRequiredService<TrayHub>());
             builder.Services.AddSingleton<TrayLauncher>();
@@ -170,13 +189,14 @@ namespace ParentControl.Service
             using var http = new HttpClient();
             var engine = new GuardEngine(new SupabaseApi(http, options), new HeartbeatQueue(data.Queue),
                 new StateStore(data.State), new CredentialStore(data.Credentials), TimeProvider.System,
-                NullLogger<GuardEngine>.Instance, Version);
+                NullLogger<GuardEngine>.Instance, Version, SafeBackup(), readOnly: true);
             var s = engine.State;
             var today = engine.LocalToday;
 
             Console.WriteLine($"Version:      {Version}");
             Console.WriteLine($"Data folder:  {data.Root}");
-            Console.WriteLine($"Device:       {(creds is null ? "NOT REGISTERED" : creds.DeviceId.ToString())}");
+            Console.WriteLine($"Device:       {(creds is null ? engine.HasCredentials ? "device.json missing (backup present)" : "NOT REGISTERED" : creds.DeviceId.ToString())}");
+            Console.WriteLine($"Tamper lock:  {(s.TamperLocked ? $"ON since {s.TamperLockedAt?.ToLocalTime():yyyy-MM-dd HH:mm} (clear: ParentControl.Guard.exe clear-tamper)" : "off")}");
             Console.WriteLine($"Queue:        {engine.QueueLength} minute(s) waiting to upload");
             Console.WriteLine($"Last sync:    {(s.LastSyncAt is { } at ? at.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "never")}");
             if (s.LastSyncError is not null) Console.WriteLine($"Last error:   {s.LastSyncError}");
@@ -205,13 +225,33 @@ namespace ParentControl.Service
             }
 
             var sample = new WindowsSessionProbe(NullLogger<WindowsSessionProbe>.Instance).Sample();
-            var decision = new Policy(engine, TimeProvider.System).Evaluate(sample.Sid);
+            var decision = new Policy(engine, TimeProvider.System, new LocalAdmins(NullLogger<LocalAdmins>.Instance)).Evaluate(sample.Sid);
             Console.WriteLine($"Console now:  {sample.User ?? "-"} ({sample.State})");
             Console.WriteLine(!decision.Restricted
                 ? "Decision:     not limited"
                 : decision.Lock is { } reason
                     ? $"Decision:     LOCK ({reason})"
                     : $"Decision:     allowed, {(decision.RemainingMinutes is { } left ? $"{left} min left" : "no end today")}");
+            return 0;
+        }
+
+        private static IBackupStore SafeBackup()
+        {
+            try
+            {
+                return new MemoryBackupStore { Value = new RegistryBackupStore().Load() };
+            }
+            catch (Exception)
+            {
+                return NullBackupStore.Instance;
+            }
+        }
+
+        // ---------------- clear-tamper ----------------
+        private static int ClearTamper(DataDirectory data)
+        {
+            File.WriteAllText(data.ClearTamperFlag, Environment.UserName);
+            Console.WriteLine("Requested. The service lifts the tamper lock within a few seconds and tells the admin app.");
             return 0;
         }
 

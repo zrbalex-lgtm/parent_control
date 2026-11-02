@@ -9,6 +9,9 @@ public interface IGuardApi
 {
     Task<SyncResponse> SyncAsync(SyncRequest request, CancellationToken ct);
     Task<RegisterResult> RegisterAsync(string code, string machineName, string clientVersion, CancellationToken ct);
+    Task<ReportResult> ReportAsync(DeviceCredentials creds, IReadOnlyList<TamperEvent> events, CancellationToken ct);
+    /// <summary>Unauthenticated "my configuration is gone" signal.</summary>
+    Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct);
 }
 
 /// <summary>The server rejected the device secret or registration code (SQLSTATE 28000).</summary>
@@ -49,7 +52,40 @@ public sealed class SupabaseApi : IGuardApi
         return rows.Count == 1 ? rows[0] : throw new ApiException("device_register returned no row");
     }
 
+    public Task<ReportResult> ReportAsync(DeviceCredentials creds, IReadOnlyList<TamperEvent> events, CancellationToken ct) =>
+        PostRpcAsync<object, ReportResult>("device_report", new Dictionary<string, object>
+        {
+            ["p_device_id"] = creds.DeviceId,
+            ["p_secret"] = creds.Secret,
+            ["p_events"] = events,
+        }, ct);
+
+    public async Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct)
+    {
+        // void RPC: PostgREST answers 204 with an empty body.
+        await PostRpcRawAsync("device_beacon", new Dictionary<string, object?>
+        {
+            ["p_machine_name"] = machineName,
+            ["p_reason"] = reason,
+            ["p_device_id"] = deviceId,
+        }, ct);
+    }
+
     private async Task<TResponse> PostRpcAsync<TRequest, TResponse>(string fn, TRequest body, CancellationToken ct)
+    {
+        var text = await PostRpcRawAsync(fn, body, ct);
+        try
+        {
+            return JsonSerializer.Deserialize<TResponse>(text, Json.Options)
+                   ?? throw new ApiException($"{fn}: empty response");
+        }
+        catch (JsonException ex)
+        {
+            throw new ApiException($"{fn}: bad response: {ex.Message}", ex);
+        }
+    }
+
+    private async Task<string> PostRpcRawAsync<TRequest>(string fn, TRequest body, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{_options.SupabaseUrl.TrimEnd('/')}/rest/v1/rpc/{fn}")
         {
@@ -74,18 +110,7 @@ public sealed class SupabaseApi : IGuardApi
         using (res)
         {
             var text = await res.Content.ReadAsStringAsync(ct);
-            if (res.IsSuccessStatusCode)
-            {
-                try
-                {
-                    return JsonSerializer.Deserialize<TResponse>(text, Json.Options)
-                           ?? throw new ApiException($"{fn}: empty response");
-                }
-                catch (JsonException ex)
-                {
-                    throw new ApiException($"{fn}: bad response: {ex.Message}", ex);
-                }
-            }
+            if (res.IsSuccessStatusCode) return text;
 
             var (code, message) = ParseError(text);
             if (code == "28000" || res.StatusCode == HttpStatusCode.Unauthorized)

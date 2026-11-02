@@ -8,6 +8,9 @@ internal static class AtomicFile
     public static void WriteAllText(string path, string text)
     {
         var tmp = path + ".tmp";
+        var dir = Path.GetDirectoryName(path);
+        // The data folder may have been deleted while the service runs.
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
         using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
         using (var w = new StreamWriter(fs, new UTF8Encoding(false)))
         {
@@ -24,7 +27,7 @@ internal static class AtomicFile
         {
             return File.Exists(path) ? File.ReadAllText(path) : null;
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return null;
         }

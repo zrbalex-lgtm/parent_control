@@ -380,5 +380,18 @@ select device_report(:'dev1', :'sec1b',
 select pg_temp.check(not (:'r'::jsonb->>'tamper_locked')::boolean, 'notify mode does not lock');
 select pg_temp.expect_error($$select count(*) from parent_control.tamper_events$$, '42501', 'anon cannot read events');
 
+-- local clear (008): applied in order, a later lock event wins
+reset role;
+update parent_control.settings set tamper_action = 'lock';
+set role anon;
+select device_report(:'dev1', :'sec1b',
+  '[{"client_id":"f0000000-0000-4000-8000-000000000005","type":"clock_changed"},
+    {"client_id":"f0000000-0000-4000-8000-000000000006","type":"tamper_cleared_locally","user":"papa"}]') as r \gset
+select pg_temp.check(not (:'r'::jsonb->>'tamper_locked')::boolean, 'local clear lifts the lock');
+select device_report(:'dev1', :'sec1b',
+  '[{"client_id":"f0000000-0000-4000-8000-000000000007","type":"tamper_cleared_locally"},
+    {"client_id":"f0000000-0000-4000-8000-000000000008","type":"data_tampered"}]') as r \gset
+select pg_temp.check((:'r'::jsonb->>'tamper_locked')::boolean, 'lock after clear wins');
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

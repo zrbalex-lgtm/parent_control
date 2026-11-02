@@ -39,10 +39,15 @@ public sealed class GuardWorker(
     private DateTimeOffset _lastStatusAt;
     private readonly HashSet<string> _noticesSent = [];
 
+    // tamper checks
+    private readonly ClockWatch _clock = new(time, () => Environment.TickCount64, TimeSpan.FromMinutes(2));
+    private DateTimeOffset _lastZoneCheck = DateTimeOffset.MinValue;
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        log.LogInformation("Guard {Version} started. Data: {Dir}. Queue: {Queue}. Registered: {Registered}",
-            Program.Version, data.Root, engine.QueueLength, File.Exists(data.Credentials));
+        log.LogInformation("Guard {Version} started. Data: {Dir}. Queue: {Queue}. Registered: {Registered}. Tamper lock: {Tamper}",
+            Program.Version, data.Root, engine.QueueLength, engine.HasCredentials, engine.State.TamperLocked);
+        if (engine.ConfigLost) log.LogWarning("Registration is lost: only accounts known as children are blocked until the PC is registered again");
 
         while (!ct.IsCancellationRequested)
         {
@@ -79,6 +84,7 @@ public sealed class GuardWorker(
         TrackSession(sample, now);
 
         HandleInbox(sample);
+        CheckTamper(sample, now);
 
         if (engine.RecordMinute(sample) is not null || _syncNow)
         {
@@ -101,6 +107,66 @@ public sealed class GuardWorker(
         }
 
         LogChanges(sample, decision);
+    }
+
+    /// <summary>Cheap checks every loop: data folder, local clear request, clock and time zone.</summary>
+    private void CheckTamper(SessionSample sample, DateTimeOffset now)
+    {
+        if (!Directory.Exists(data.Root))
+        {
+            log.LogWarning("Data folder {Dir} is gone; recreating it", data.Root);
+            try
+            {
+                data.EnsureSecured();
+            }
+            catch (Exception ex)
+            {
+                log.LogError("Cannot recreate data folder: {Message}", ex.Message);
+            }
+        }
+
+        if (File.Exists(data.ClearTamperFlag))
+        {
+            string? by = null;
+            try
+            {
+                by = File.ReadAllText(data.ClearTamperFlag).Trim();
+                File.Delete(data.ClearTamperFlag);
+            }
+            catch (IOException) { }
+            engine.ClearTamperLocally(string.IsNullOrEmpty(by) ? null : by);
+            _syncNow = true;
+            _lastStatusJson = null;
+        }
+
+        if (_clock.Check() is { } jump)
+        {
+            engine.ReportTamper(TamperTypes.ClockChanged,
+                new() { ["kind"] = "clock", ["jump_seconds"] = ((long)jump.TotalSeconds).ToString() }, sample.User);
+            _syncNow = true;
+        }
+
+        if (now - _lastZoneCheck >= TimeSpan.FromMinutes(1))
+        {
+            _lastZoneCheck = now;
+            var before = engine.TamperQueueLength;
+            engine.NoteTimeZone(ReadTimeZoneKey(), sample.User);
+            if (engine.TamperQueueLength != before) _syncNow = true;
+        }
+    }
+
+    /// <summary>Current zone from the registry (TimeZoneInfo.Local is cached for the process lifetime).</summary>
+    private static string? ReadTimeZoneKey()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\TimeZoneInformation");
+            return (key?.GetValue("TimeZoneKeyName") as string)?.TrimEnd('\0');
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>Adds the tray's foreground-window report; marks the minute idle after 5 min without input.</summary>

@@ -18,6 +18,9 @@ public sealed class DataDirectory
     public string Credentials => Path.Combine(Root, "device.json");
     public string State => Path.Combine(Root, "state.json");
     public string Queue => Path.Combine(Root, "queue.jsonl");
+    public string Tamper => Path.Combine(Root, "tamper.jsonl");
+    /// <summary>Dropped by the clear-tamper command; picked up by the running service.</summary>
+    public string ClearTamperFlag => Path.Combine(Root, "clear-tamper.flag");
 
     public static bool IsElevated()
     {

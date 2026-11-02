@@ -16,6 +16,7 @@ public sealed class HeartbeatQueue
     private readonly List<Heartbeat> _items = [];
     private readonly HashSet<DateTimeOffset> _keys = [];
     private readonly object _lock = new();
+    private bool _dirty;
 
     public HeartbeatQueue(string path, int maxItems = MaxItems)
     {
@@ -53,9 +54,14 @@ public sealed class HeartbeatQueue
                 _items.RemoveRange(0, drop);
                 Rewrite();
             }
+            else if (_dirty || !File.Exists(_path))
+            {
+                // The file was lost or a write failed: rewrite everything still in memory.
+                Rewrite();
+            }
             else
             {
-                File.AppendAllText(_path, JsonSerializer.Serialize(hb, Json.Options) + "\n");
+                Persist(() => File.AppendAllText(_path, JsonSerializer.Serialize(hb, Json.Options) + "\n"));
             }
             return true;
         }
@@ -75,7 +81,16 @@ public sealed class HeartbeatQueue
     private void Load()
     {
         if (!File.Exists(_path)) return;
-        foreach (var line in File.ReadLines(_path))
+        IEnumerable<string> fileLines;
+        try
+        {
+            fileLines = File.ReadAllLines(_path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+        foreach (var line in fileLines)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
             Heartbeat? hb;
@@ -102,6 +117,22 @@ public sealed class HeartbeatQueue
     private void Rewrite()
     {
         var lines = _items.Select(h => JsonSerializer.Serialize(h, Json.Options));
-        AtomicFile.WriteAllText(_path, _items.Count == 0 ? "" : string.Join("\n", lines) + "\n");
+        Persist(() => AtomicFile.WriteAllText(_path, _items.Count == 0 ? "" : string.Join("\n", lines) + "\n"));
+    }
+
+    /// <summary>Disk errors never lose a minute: the in-memory queue is the source of truth while running.</summary>
+    private void Persist(Action write)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(_path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            write();
+            _dirty = false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _dirty = true;
+        }
     }
 }

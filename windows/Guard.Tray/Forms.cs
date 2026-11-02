@@ -161,12 +161,7 @@ internal sealed class StatusForm : Form
         }
 
         _name.Text = s.ChildName ?? "";
-        _remaining.Text = s.Lock switch
-        {
-            null => Texts.Remaining(s.RemainingMinutes),
-            nameof(LockReason.NotUnlocked) => "Доступ закрыт",
-            _ => "Время вышло",
-        };
+        _remaining.Text = s.Lock is null ? Texts.Remaining(s.RemainingMinutes) : Texts.LockShort(s.Lock);
         _remaining.ForeColor = s.Lock is not null ? Theme.Danger : Theme.ForRemaining(s.RemainingMinutes);
         _remainingBy.Text = s.Lock is not null ? "" : Texts.RemainingBy(s.RemainingBy, s.WindowTo);
         _remainingBy.Visible = _remainingBy.Text.Length > 0;
@@ -181,7 +176,7 @@ internal sealed class StatusForm : Form
             : s.StaleSettings ? "Нет интернета — работают старые настройки"
             : "Нет интернета — время считается на этом компьютере";
         _link.ForeColor = connected && s.Online ? Theme.Muted : Theme.Warn;
-        _request.Visible = true;
+        _request.Visible = LockReasons.AllowsRequest(s.Lock);
         _request.UnlockMode = s.Lock == nameof(LockReason.NotUnlocked);
         _request.SetOpenRequest(s.RequestMinutes, s.RequestKind);
     }
@@ -263,7 +258,7 @@ internal sealed class LockForm : OverlayForm
 
     public event Action<int, string?, string>? RequestSubmitted;
 
-    public LockForm(string text, int seconds, bool unlockMode, int? openRequestMinutes, string? openRequestKind)
+    public LockForm(string text, int seconds, bool unlockMode, int? openRequestMinutes, string? openRequestKind, bool allowRequest = true)
     {
         _seconds = seconds;
         Body.Controls.Add(Theme.MakeLabel(text, 26, Theme.Text, FontStyle.Bold));
@@ -278,7 +273,7 @@ internal sealed class LockForm : OverlayForm
             _request.SetOpenRequest(m, k);
             RequestSubmitted?.Invoke(m, r, k);
         };
-        Body.Controls.Add(_request);
+        if (allowRequest) Body.Controls.Add(_request);
 
         Tick();
         _timer.Tick += (_, _) => Tick();

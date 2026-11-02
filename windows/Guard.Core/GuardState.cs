@@ -29,6 +29,17 @@ public sealed class GuardState
     /// <summary>Admin messages already shown on this PC.</summary>
     public HashSet<long> ShownMessages { get; set; } = [];
 
+    /// <summary>Locked after tampering; cleared by the server (admin app) or the local clear-tamper command.</summary>
+    public bool TamperLocked { get; set; }
+    public DateTimeOffset? TamperLockedAt { get; set; }
+
+    /// <summary>Last device id this PC had; sent with the "config lost" beacon.</summary>
+    public Guid? KnownDeviceId { get; set; }
+    public DateTimeOffset? LastBeaconAt { get; set; }
+
+    /// <summary>Windows time zone seen last; a change is reported.</summary>
+    public string? TimeZone { get; set; }
+
     public void AddUsage(DateOnly date, string sid, DateTimeOffset minute)
     {
         if (!Usage.TryGetValue(date, out var bySid)) Usage[date] = bySid = [];
@@ -61,6 +72,8 @@ public sealed class StateStore
 
     public StateStore(string path) => _path = path;
 
+    public bool Exists => File.Exists(_path);
+
     public GuardState Load()
     {
         var text = AtomicFile.TryReadAllText(_path);
@@ -86,6 +99,8 @@ public sealed class CredentialStore
     private readonly string _path;
 
     public CredentialStore(string path) => _path = path;
+
+    public bool Exists => File.Exists(_path);
 
     public DeviceCredentials? Load()
     {

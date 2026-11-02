@@ -25,7 +25,7 @@ public sealed class WindowsSessionControl(TrayHub hub, GuardEngine engine, ILogg
     public void ShowLock(uint sessionId, LockReason reason, Decision decision, TimeSpan grace)
     {
         var text = Texts.Lock(reason, decision.WindowFrom, decision.WindowTo);
-        var canRequest = decision.ChildId is { } child && engine.OpenRequestFor(child) is null;
+        var canRequest = LockReasons.AllowsRequest(reason) && decision.ChildId is { } child && engine.OpenRequestFor(child) is null;
         var sent = hub.Send(sessionId, new IpcMessage
         {
             Type = IpcTypes.Lock,

@@ -86,6 +86,10 @@ public sealed record SyncResponse
     public List<LockInfo> Locks { get; init; } = [];
     public List<MessageInfo> Messages { get; init; } = [];
     public List<RequestInfo> Requests { get; init; } = [];
+    /// <summary>The device is locked after tampering until the admin clears it (since 007).</summary>
+    public bool TamperLocked { get; init; }
+    /// <summary>"lock" or "notify": what tamper events do; null from older servers.</summary>
+    public string? TamperAction { get; init; }
 }
 
 public static class RequestStatuses
