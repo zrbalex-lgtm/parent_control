@@ -19,7 +19,7 @@ export async function render({ api }) {
             h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'))))
       : h('div', { class: 'card empty' },
           h('p', {}, 'Пока никого нет.'),
-          h('p', { class: 'muted' }, 'Добавь детей, потом привяжи их учётки Windows на вкладке «Устройства».'));
+          h('p', { class: 'muted' }, 'Добавь детей, потом привяжи их учётки Windows на вкладке «ПК».'));
 
     container.replaceChildren(
       list,

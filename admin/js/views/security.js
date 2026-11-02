@@ -95,7 +95,7 @@ export async function render({ api }) {
             ? h('div', { class: 'actions' },
                 h('button', { class: 'btn primary', onclick: (e) => unlock(e.currentTarget, d) }, 'Разблокировать'))
             : d.config_state === 'lost'
-              ? h('p', { class: 'muted small' }, 'Запусти install.cmd на этом ПК с новым кодом (Устройства → ⋯ → Переустановка).')
+              ? h('p', { class: 'muted small' }, 'Запусти install.cmd на этом ПК с новым кодом (ПК → ⋯ → Переустановка).')
               : null)))
       : h('div', { class: 'card ok-banner' }, h('span', { 'aria-hidden': 'true' }, '✓ '), 'Все компьютеры в порядке');
 

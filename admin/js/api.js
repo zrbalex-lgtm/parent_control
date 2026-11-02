@@ -189,6 +189,33 @@ export const api = {
     }));
   },
 
+  // ---------------- history & app groups ----------------
+  async history(childId, fromStr, toStr) {
+    return unwrap(await sb.rpc('admin_history', { p_child: childId, p_from: fromStr, p_to: toStr }));
+  },
+  async ungroupedApps(days = 7) {
+    return unwrap(await sb.rpc('admin_ungrouped', { p_days: days }));
+  },
+  async previewAppRule(field, type, pattern) {
+    return unwrap(await sb.rpc('admin_preview_app_rule', { p_field: field, p_type: type, p_pattern: pattern }));
+  },
+  async listAppGroups() {
+    return unwrap(await sb.from('app_groups')
+      .select('id,group_name,match_field,match_type,pattern,priority,is_enabled')
+      .order('group_name').order('priority'));
+  },
+  async saveAppGroup(rule) {
+    const row = {
+      group_name: rule.group_name.trim(), match_field: rule.match_field, match_type: rule.match_type,
+      pattern: rule.pattern.trim(), priority: rule.priority ?? 100, is_enabled: rule.is_enabled ?? true,
+    };
+    if (rule.id) unwrap(await sb.from('app_groups').update(row).eq('id', rule.id));
+    else unwrap(await sb.from('app_groups').insert(row));
+  },
+  async deleteAppGroup(id) {
+    unwrap(await sb.from('app_groups').delete().eq('id', id));
+  },
+
   // ---------------- security (tamper events) ----------------
   async listTamperEvents({ onlyUnhandled = false, deviceId = null, limit = 100 } = {}) {
     let q = sb.from('tamper_events')

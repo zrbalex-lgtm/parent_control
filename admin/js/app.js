@@ -3,10 +3,13 @@ import { h, toast, busy, humanError } from './ui.js';
 
 const ROUTES = {
   home: { title: 'Главная', icon: '⌂', load: () => import('./views/home.js') },
+  history: { title: 'История', icon: '▤', load: () => import('./views/history.js') },
   children: { title: 'Дети', icon: '☺', load: () => import('./views/children.js') },
   schedule: { title: 'Расписание', icon: '◷', load: () => import('./views/schedule.js') },
-  devices: { title: 'Устройства', icon: '▭', load: () => import('./views/devices.js') },
+  devices: { title: 'Устройства', tab: 'ПК', icon: '▭', load: () => import('./views/devices.js') },
   security: { title: 'Безопасность', tab: 'Защита', icon: '◈', load: () => import('./views/security.js') },
+  // Not in the tab bar: opened from History.
+  groups: { title: 'Группы приложений', icon: '', hidden: true, parent: 'history', load: () => import('./views/groups.js') },
 };
 const DEFAULT_ROUTE = 'home';
 
@@ -67,7 +70,7 @@ function renderNoAccess(session) {
 // ---------------- shell ----------------
 function renderShell() {
   const nav = h('nav', { class: 'tabbar', 'aria-label': 'Разделы' },
-    Object.entries(ROUTES).map(([name, r]) =>
+    Object.entries(ROUTES).filter(([, r]) => !r.hidden).map(([name, r]) =>
       h('a', { href: `#/${name}`, 'data-route': name, class: 'tab' },
         h('span', { class: 'tab-icon', 'aria-hidden': 'true' }, r.icon,
           name === 'security' ? h('span', { class: 'tab-badge', id: 'security-badge', hidden: true }) : null),
@@ -88,9 +91,10 @@ async function renderRoute() {
   const seq = ++renderSeq;
   document.getElementById('page-title').textContent = route.title;
   document.title = `${route.title} · Экранное время`;
+  const tabName = route.parent || name;
   for (const a of document.querySelectorAll('.tab')) {
-    a.classList.toggle('active', a.dataset.route === name);
-    if (a.dataset.route === name) a.setAttribute('aria-current', 'page');
+    a.classList.toggle('active', a.dataset.route === tabName);
+    if (a.dataset.route === tabName) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
   const view = document.getElementById('view');

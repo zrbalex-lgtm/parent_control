@@ -20,6 +20,7 @@ const store = (window.__store = {
       tamper_locked_since: null, config_state: 'ok' },
   ],
   tamper_events: [],
+  app_groups: [],
   device_accounts: [],
   time_requests: [],
   bonuses: [],
@@ -40,7 +41,21 @@ store.device_accounts.push(
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-1', windows_user: 'misha', child_id: null, last_seen_at: iso(60e3) },
   { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-2', windows_user: 'papa', child_id: null, last_seen_at: iso(7200e3) });
 
-const PK = { commands: ['id'], bonuses: ['id'], settings: ['id'], day_unlocks: ['child_id', 'local_date'], children: ['id'], devices: ['id'], device_accounts: ['id'],
+// Apps seen on the PCs (for history, ungrouped list and rule preview).
+const SEEN_APPS = [
+  { exe: 'javaw.exe', product: 'Java(TM) Platform SE', title: 'Minecraft 1.21', minutes: 340 },
+  { exe: 'chrome.exe', product: 'Google Chrome', title: 'YouTube — Google Chrome', minutes: 210 },
+  { exe: 'Roblox.exe', product: null, title: 'Roblox', minutes: 95 },
+];
+const ruleMatches = (r, a) => {
+  const v = r.match_field === 'exe' ? a.exe : r.match_field === 'product' ? a.product : a.title;
+  if (!v) return false;
+  return r.match_type === 'contains' ? v.toLowerCase().includes(r.pattern.toLowerCase()) : new RegExp(r.pattern, 'i').test(v);
+};
+const groupOf = (a) => store.app_groups.filter((r) => r.is_enabled !== false)
+  .sort((x, y) => (x.priority ?? 100) - (y.priority ?? 100)).find((r) => ruleMatches(r, a))?.group_name ?? null;
+
+const PK = { app_groups: ['id'], commands: ['id'], bonuses: ['id'], settings: ['id'], day_unlocks: ['child_id', 'local_date'], children: ['id'], devices: ['id'], device_accounts: ['id'],
              schedule_weekly: ['child_id', 'weekday'], schedule_overrides: ['child_id', 'local_date'] };
 const TIME_COLS = ['window_from', 'window_to'];
 const toPgTime = (r) => {
@@ -194,6 +209,46 @@ export function createClient() {
           store.bonuses.push({ child_id: r.child_id, local_date: args.p_local_date, minutes: r.granted_minutes });
         }
         return { data: null, error: null };
+      }
+      if (name === 'admin_history') {
+        const days = [];
+        for (let d = new Date(`${args.p_from}T00:00:00`); d <= new Date(`${args.p_to}T00:00:00`); d.setDate(d.getDate() + 1)) {
+          const i = days.length;
+          const p = (n) => String(n).padStart(2, '0');
+          days.push({ date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+                      minutes: [95, 130, 0, 60, 145, 30, 110][i % 7], idle_minutes: 5, allowed: 120, bonus_minutes: 0 });
+        }
+        const byApp = new Map();
+        for (const a of SEEN_APPS) {
+          const g = groupOf(a);
+          const key = g || a.product || a.exe;
+          const cur = byApp.get(key) || { app: key, grouped: !!g, minutes: 0 };
+          cur.minutes += a.minutes;
+          byApp.set(key, cur);
+        }
+        const t0 = Date.now() - 3600e3;
+        return { data: {
+          days,
+          apps: [...byApp.values()].sort((a, b) => b.minutes - a.minutes),
+          sessions: [
+            { device_id: store.devices[0].id, device_name: store.devices[0].name, started_at: new Date(t0).toISOString(),
+              ended_at: new Date(t0 + 48 * 60e3).toISOString(), minutes: 48, top_app: groupOf(SEEN_APPS[0]) || 'Java(TM) Platform SE' },
+            { device_id: store.devices[0].id, device_name: store.devices[0].name, started_at: new Date(t0 - 86400e3).toISOString(),
+              ended_at: new Date(t0 - 86400e3 + 75 * 60e3).toISOString(), minutes: 75, top_app: 'Google Chrome' },
+          ],
+        }, error: null };
+      }
+      if (name === 'admin_ungrouped') {
+        return { data: SEEN_APPS.filter((a) => !groupOf(a)), error: null };
+      }
+      if (name === 'admin_preview_app_rule') {
+        let hits;
+        try {
+          hits = SEEN_APPS.filter((a) => ruleMatches({ match_field: args.p_field, match_type: args.p_type, pattern: args.p_pattern }, a));
+        } catch {
+          return { data: null, error: { message: 'invalid regex', code: '22023' } };
+        }
+        return { data: { minutes: hits.reduce((x, a) => x + a.minutes, 0), samples: hits }, error: null };
       }
       if (name === 'admin_clear_tamper_lock') {
         const d = store.devices.find((x) => x.id === args.p_device_id);

@@ -56,6 +56,7 @@ export function humanError(err) {
   if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) return 'Нет связи с сервером';
   if (/JWT expired/i.test(msg)) return 'Сессия истекла, войди заново';
   if (/forbidden|permission denied|42501/i.test(msg)) return 'Нет доступа';
+  if (/invalid regex|invalid regular expression/i.test(msg)) return 'Ошибка в регулярном выражении';
   return msg;
 }
 
@@ -121,6 +122,15 @@ export function fmtMinutes(m) {
   const hh = Math.floor(m / 60);
   const mm = String(m % 60).padStart(2, '0');
   return `${hh}:${mm}`;
+}
+
+// "45 мин", "1 ч 20 мин", "2 ч".
+export function fmtDuration(m) {
+  if (m == null) return '—';
+  if (m < 60) return `${m} мин`;
+  const hh = Math.floor(m / 60);
+  const mm = m % 60;
+  return mm ? `${hh} ч ${mm} мин` : `${hh} ч`;
 }
 
 // Local calendar date as YYYY-MM-DD (not UTC).

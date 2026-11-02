@@ -393,5 +393,41 @@ select device_report(:'dev1', :'sec1b',
     {"client_id":"f0000000-0000-4000-8000-000000000008","type":"data_tampered"}]') as r \gset
 select pg_temp.check((:'r'::jsonb->>'tamper_locked')::boolean, 'lock after clear wins');
 
+-- ---------------------------------------------------------------------
+-- Reports (009)
+-- ---------------------------------------------------------------------
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000b';
+select pg_temp.expect_error($$select parent_control.admin_history('11111111-1111-1111-1111-111111111111', current_date, current_date)$$,
+  '42501', 'stranger cannot read history');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select pg_temp.expect_error($$select parent_control.admin_history('11111111-1111-1111-1111-111111111111', current_date, current_date + 100)$$,
+  '22023', 'history range is limited');
+
+select admin_history('11111111-1111-1111-1111-111111111111', current_date - 6, current_date) as hist \gset
+select pg_temp.check(jsonb_array_length(:'hist'::jsonb->'days') = 7, 'history has one row per day');
+select pg_temp.check((:'hist'::jsonb#>>'{days,6,minutes}')::int = fn_spent_minutes('11111111-1111-1111-1111-111111111111', current_date)
+                     and (:'hist'::jsonb#>>'{days,6,minutes}')::int > 0, 'history today matches spent minutes');
+select pg_temp.check(:'hist'::jsonb#>>'{apps,0,app}' = 'Java(TM) Platform SE'
+                     and not (:'hist'::jsonb#>>'{apps,0,grouped}')::boolean, 'ungrouped app named by product');
+select pg_temp.check(jsonb_array_length(:'hist'::jsonb->'sessions') >= 1
+                     and :'hist'::jsonb#>>'{sessions,0,device_name}' is not null, 'sessions listed with device');
+
+select admin_ungrouped(7) as ung \gset
+select pg_temp.check(:'ung'::jsonb @> '[{"exe":"javaw.exe"}]', 'javaw listed as ungrouped');
+
+select admin_preview_app_rule('title', 'contains', 'minecraft') as prev \gset
+select pg_temp.check((:'prev'::jsonb->>'minutes')::int > 0
+                     and :'prev'::jsonb#>>'{samples,0,exe}' = 'javaw.exe', 'rule preview finds minutes');
+select pg_temp.expect_error($$select parent_control.admin_preview_app_rule('title', 'regex', '(')$$, '22023', 'bad regex rejected');
+
+insert into app_groups (group_name, match_field, match_type, pattern) values ('Minecraft', 'title', 'contains', 'minecraft');
+select admin_history('11111111-1111-1111-1111-111111111111', current_date, current_date) as hist \gset
+select pg_temp.check(:'hist'::jsonb#>>'{apps,0,app}' = 'Minecraft' and (:'hist'::jsonb#>>'{apps,0,grouped}')::boolean,
+                     'grouped app shows group name');
+select pg_temp.check(not (admin_ungrouped(7) @> '[{"exe":"javaw.exe"}]'), 'grouped app leaves ungrouped list');
+reset request.jwt.claim.sub;
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

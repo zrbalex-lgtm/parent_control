@@ -5,7 +5,7 @@ Home screen-time control for kids' Windows PCs.
 | Part | What |
 |---|---|
 | `db/` | Supabase schema (`parent_control`), RPC, local tests |
-| `admin/` | Parent PWA on GitHub Pages: dashboard, requests, children, schedule, devices, security |
+| `admin/` | Parent PWA on GitHub Pages: dashboard, requests, history, app groups, children, schedule, devices, security |
 | `windows/` | Guard service + tray app (.NET 10, one exe), PowerShell installer |
 | `tests/admin/` | Browser tests of the admin app against a Supabase mock |
 

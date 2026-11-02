@@ -55,7 +55,7 @@ await page.getByRole('button', { name: 'Войти' }).click();
 await page.getByRole('heading', { name: 'Главная' }).waitFor();
 await page.getByText('Добавь детей на вкладке «Дети».').waitFor();
 step('login lands on home with no requests');
-await page.getByRole('link', { name: /Устройства/ }).click();
+await page.getByRole('link', { name: /^ПК$/ }).click();
 await page.getByRole('heading', { name: 'Устройства' }).waitFor();
 
 // ---------- devices before children ----------
@@ -88,7 +88,7 @@ await page.getByRole('button', { name: 'Изменить: Анна' }).waitFor()
 step('child renamed');
 
 // ---------- bind account ----------
-await page.getByRole('link', { name: /Устройства/ }).click();
+await page.getByRole('link', { name: /^ПК$/ }).click();
 await page.getByLabel(/misha/).selectOption({ label: 'Миша' });
 await page.getByText('Учётка привязана').waitFor();
 {
@@ -323,6 +323,47 @@ await page.getByRole('tab', { name: /Миша/ }).click();
 await page.getByText(/каникулы/).first().waitFor();
 await page.screenshot({ path: `${shots}/07-schedule-desktop.png`, fullPage: true });
 
+// ---------- history & app groups ----------
+await page.setViewportSize({ width: 390, height: 844 });
+await page.getByRole('link', { name: /^История$/ }).click();
+await page.getByRole('heading', { name: 'Экранное время' }).waitFor();
+if ((await page.locator('.chart .col').count()) !== 7) fail('7 day columns');
+await page.getByText('дней сверх лимита').waitFor();
+await page.getByRole('button', { name: '30 дней' }).click();
+await page.waitForFunction(() => document.querySelectorAll('.chart .col').length === 30);
+await page.getByRole('button', { name: '7 дней' }).click();
+await page.waitForFunction(() => document.querySelectorAll('.chart .col').length === 7);
+await page.getByText('Google Chrome').first().waitFor();
+step('history: chart, periods, apps, sessions');
+await page.screenshot({ path: `${shots}/15-history.png`, fullPage: true });
+
+await page.getByRole('button', { name: 'В группу: Java(TM) Platform SE' }).click();
+if ((await page.getByLabel('Группа').inputValue()) !== 'Java Platform SE') fail('group name suggested from product');
+await page.getByLabel('Группа').fill('Minecraft');
+await page.getByText(/За 7 дней попадает 5 ч 40 мин/).waitFor();
+await page.screenshot({ path: `${shots}/16-rule.png` });
+await page.getByRole('button', { name: 'Сохранить' }).click();
+await page.getByText('Группа сохранена').waitFor();
+await page.locator('.apps').getByText('Minecraft', { exact: true }).waitFor();
+step('history: app added to a group with preview');
+
+await page.getByRole('link', { name: 'Группы приложений' }).click();
+await page.getByRole('heading', { name: 'Группы приложений' }).waitFor();
+await page.locator('[data-group="Minecraft"]').waitFor();
+await page.getByRole('button', { name: 'В группу: Google Chrome' }).click();
+await page.getByLabel('Группа').fill('Браузер');
+await page.getByRole('button', { name: 'Сохранить' }).click();
+await page.locator('[data-group="Браузер"]').waitFor();
+if (await page.getByRole('button', { name: 'В группу: Google Chrome' }).count()) fail('chrome left ungrouped list');
+await page.getByRole('button', { name: '+ Новая группа' }).click();
+await page.getByLabel('Как сравнивать').selectOption('regex');
+await page.getByLabel('Текст').fill('(');
+await page.getByText('Ошибка в регулярном выражении').waitFor();
+await page.keyboard.press('Escape');
+if ((await store()).app_groups.length !== 2) fail('two rules stored');
+step('groups: rules, ungrouped list, regex error');
+await page.screenshot({ path: `${shots}/17-groups.png`, fullPage: true });
+
 // logout
 await page.getByRole('button', { name: 'Выйти' }).click();
 await page.getByRole('button', { name: 'Войти' }).waitFor();
@@ -333,8 +374,8 @@ await page.setViewportSize({ width: 360, height: 780 });
 await page.getByLabel('Пароль').fill('secret');
 await page.getByLabel('Email').fill('admin@pc.home');
 await page.getByRole('button', { name: 'Войти' }).click();
-for (const tab of ['Главная', 'Дети', 'Расписание', 'Устройства', 'Защита']) {
-  await page.getByRole('link', { name: new RegExp(tab) }).click();
+for (const tab of ['Главная', 'История', 'Дети', 'Расписание', 'ПК', 'Защита']) {
+  await page.getByRole('link', { name: new RegExp(`^${tab}`) }).click();
   await page.waitForTimeout(400);
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   if (over > 0) fail(`${tab}: horizontal overflow ${over}px`);

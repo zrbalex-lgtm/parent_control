@@ -19,4 +19,5 @@ run migrations/005_locked_by_default.sql
 run migrations/006_child_locked_by_default.sql
 run migrations/007_hardening.sql
 run migrations/008_local_tamper_clear.sql
+run migrations/009_reports.sql
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f tests/01_rpc_tests.sql 2>&1 >/dev/null | sed 's/^psql:[^ ]* NOTICE:  //'
