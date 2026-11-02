@@ -90,14 +90,15 @@ export async function render({ api }) {
       syncLabel();
       confirm.addEventListener('click', (e) => busy(e.currentTarget, async () => {
         await api.decideRequest(r.id, true, chosen, today);
-        toast(`${child.name}: добавлено ${chosen} мин`, 'ok');
+        toast(`${child.name}: открыто на ${chosen} мин`, 'ok');
         await refresh();
       }));
       return h('li', { class: 'card request' },
         requestHead(r, child, `${child.name} просит ${r.minutes} мин`),
         r.reason ? h('p', { class: 'reason' }, `«${r.reason}»`) : null,
         h('div', { class: 'amounts', role: 'group', 'aria-label': 'Сколько добавить' }, chips),
-        h('div', { class: 'grant' }, confirm, denyButton(r)));
+        h('div', { class: 'grant' }, confirm, denyButton(r)),
+        h('p', { class: 'muted small' }, 'Доступ откроется сразу на это время — даже вне расписания и сверх лимита.'));
     };
 
     const pendingCard = (r) => (r.kind === 'unlock' ? unlockCard : timeCard)(r, childOf(r.child_id));

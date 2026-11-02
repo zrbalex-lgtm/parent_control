@@ -26,6 +26,8 @@ public static class RemainingReasons
     public const string Limit = "limit";
     public const string Window = "window";
     public const string Lock = "lock";
+    /// <summary>Access granted by an approved request runs out.</summary>
+    public const string Grant = "grant";
 }
 
 /// <summary>What the guard thinks about the current console user right now.</summary>
@@ -108,6 +110,17 @@ public sealed class Policy(GuardEngine engine, TimeProvider time, IAdminCheck? a
             .Select(l => (int?)Math.Ceiling((l.LockFrom - nowUtc).TotalMinutes))
             .Min();
 
+        // An approved "more time" request opens access for that many minutes from the approval,
+        // even outside the window, past the limit or on a day that is locked by default.
+        var grantEnd = (sync.Requests ?? [])
+            .Where(r => r.ChildId == childId && r.Kind == RequestKinds.Time && r.Status == RequestStatuses.Approved
+                        && r.DecidedAt is { } at && at <= nowUtc)
+            .Select(r => r.DecidedAt!.Value.AddMinutes(r.GrantedMinutes ?? r.Minutes))
+            .Where(end => end > nowUtc)
+            .DefaultIfEmpty(DateTimeOffset.MinValue)
+            .Max();
+        int? grantLeft = grantEnd > nowUtc ? (int)Math.Ceiling((grantEnd - nowUtc).TotalMinutes) : null;
+
         LockReason? reason =
             failClosed is not null ? failClosed
             : activeLock ? LockReason.Command
@@ -124,10 +137,24 @@ public sealed class Policy(GuardEngine engine, TimeProvider time, IAdminCheck? a
             remaining = minutes;
             remainingBy = by;
         }
-        if (reason is null)
+
+        if (grantLeft is not null && reason is LockReason.Window or LockReason.NotUnlocked or LockReason.Limit)
+        {
+            // Schedule says no, the approved request says yes until it runs out.
+            reason = null;
+            Consider(grantLeft, RemainingReasons.Grant);
+            Consider(nextLockIn, RemainingReasons.Lock);
+        }
+        else if (reason is null)
         {
             Consider(allowed - spent, RemainingReasons.Limit);
             if (to < 24 * 60) Consider((int)Math.Ceiling(to - minuteOfDay), RemainingReasons.Window);
+            // A grant that outlasts the schedule keeps access open longer.
+            if (grantLeft is not null && remaining is not null && grantLeft > remaining)
+            {
+                remaining = grantLeft;
+                remainingBy = RemainingReasons.Grant;
+            }
             Consider(nextLockIn, RemainingReasons.Lock);
         }
 

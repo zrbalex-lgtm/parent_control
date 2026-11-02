@@ -175,7 +175,7 @@ await page.screenshot({ path: `${shots}/08-requests.png`, fullPage: true });
   await card.getByRole('button', { name: '15 минут' }).click();
   await card.getByRole('button', { name: 'Подтвердить +15 мин' }).click();
 }
-await page.getByText('Миша: добавлено 15 мин').waitFor();
+await page.getByText('Миша: открыто на 15 мин').waitFor();
 await page.locator('li.request', { hasText: 'Анна' }).getByRole('button', { name: 'Отклонить' }).click();
 await page.locator('li.request').first().waitFor({ state: 'detached' });
 await page.getByText('добавлено 15').waitFor();

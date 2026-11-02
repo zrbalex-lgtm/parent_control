@@ -28,7 +28,8 @@ public class PolicyTests : IDisposable
     public void Dispose() => _dir.Dispose();
 
     private void Server(int? limit = 120, int bonus = 0, string from = "15:00", string to = "20:00", int spent = 0,
-        bool enabled = true, List<LockInfo>? locks = null, DayInfo? tomorrow = null)
+        bool enabled = true, List<LockInfo>? locks = null, DayInfo? tomorrow = null, List<RequestInfo>? requests = null,
+        bool requiresUnlock = false)
     {
         _api.Respond = _ => new SyncResponse
         {
@@ -38,11 +39,12 @@ public class PolicyTests : IDisposable
             [
                 new ChildInfo(Misha, "Миша",
                 [
-                    new DayInfo(Nov1, limit, bonus, from, to, spent),
+                    new DayInfo(Nov1, limit, bonus, from, to, spent, RequiresUnlock: requiresUnlock),
                     tomorrow ?? new DayInfo(Nov2, 60, 0, "10:00", "20:00", 0),
                 ]),
             ],
             Locks = locks ?? [],
+            Requests = requests ?? [],
         };
         _engine.SyncAsync(default).GetAwaiter().GetResult();
     }
@@ -271,4 +273,51 @@ public class PolicyTests : IDisposable
     [InlineData("", null)]
     [InlineData("bad", null)]
     public void ParseTime(string s, int? expected) => Assert.Equal(expected, Policy.ParseTime(s));
+
+    private RequestInfo Approved(int minutes, TimeSpan ago, string kind = RequestKinds.Time) =>
+        new(1, Guid.NewGuid(), Misha, minutes, minutes, RequestStatuses.Approved,
+            _time.UtcNow - ago - TimeSpan.FromMinutes(1), _time.UtcNow - ago, kind);
+
+    [Fact]
+    public void Approved_request_opens_access_outside_the_window()
+    {
+        _time.UtcNow = new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero); // 21:00 local, window ended at 20:00
+        Server(to: "20:00", requests: [Approved(30, TimeSpan.FromMinutes(10))]);
+        var d = _policy.Evaluate("S-1");
+        Assert.Null(d.Lock);
+        Assert.Equal(20, d.RemainingMinutes);
+        Assert.Equal(RemainingReasons.Grant, d.RemainingBy);
+
+        _time.Advance(TimeSpan.FromMinutes(20));
+        Assert.Equal(LockReason.Window, _policy.Evaluate("S-1").Lock);
+    }
+
+    [Fact]
+    public void Approved_request_opens_a_day_locked_by_default_and_past_the_limit()
+    {
+        Server(limit: 60, spent: 90, requiresUnlock: true, requests: [Approved(15, TimeSpan.Zero)]);
+        Assert.Null(_policy.Evaluate("S-1").Lock);
+    }
+
+    [Fact]
+    public void Grant_that_outlasts_the_window_keeps_access()
+    {
+        _time.UtcNow = new DateTimeOffset(2026, 11, 1, 18, 50, 0, TimeSpan.Zero); // 19:50 local, window ends 20:00
+        Server(limit: null, to: "20:00", requests: [Approved(60, TimeSpan.Zero)]);
+        var d = _policy.Evaluate("S-1");
+        Assert.Equal(60, d.RemainingMinutes);
+        Assert.Equal(RemainingReasons.Grant, d.RemainingBy);
+    }
+
+    [Fact]
+    public void Admin_lock_beats_a_grant_and_old_or_unlock_requests_do_not_grant()
+    {
+        Server(to: "16:00", requests: [Approved(30, TimeSpan.Zero)],
+            locks: [new LockInfo(1, Misha, _time.UtcNow.AddMinutes(-1), null)]);
+        Assert.Equal(LockReason.Command, _policy.Evaluate("S-1").Lock);
+
+        _time.UtcNow = new DateTimeOffset(2026, 11, 1, 20, 0, 0, TimeSpan.Zero);
+        Server(to: "20:00", requests: [Approved(30, TimeSpan.FromMinutes(31)), Approved(30, TimeSpan.Zero, RequestKinds.Unlock)]);
+        Assert.Equal(LockReason.Window, _policy.Evaluate("S-1").Lock);
+    }
 }

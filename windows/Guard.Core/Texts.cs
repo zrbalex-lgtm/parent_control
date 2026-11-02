@@ -50,6 +50,7 @@ public static class Texts
         RemainingReasons.Window => $"до конца разрешённого времени ({windowTo})",
         RemainingReasons.Limit => "по дневному лимиту",
         RemainingReasons.Lock => "до блокировки",
+        RemainingReasons.Grant => "по одобренному запросу",
         _ => "",
     };
 
