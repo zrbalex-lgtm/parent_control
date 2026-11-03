@@ -6,11 +6,19 @@ namespace ParentControl.Tray;
 /// <summary>"Ask for more time": optional reason + one tap on 15/30/60.</summary>
 internal sealed class RequestPanel : FlowLayoutPanel
 {
+    /// <summary>Buttons stay disabled this long after the panel appears, so a click meant for something else is ignored.</summary>
+    private const int ArmDelayMs = 1500;
+
     private readonly float _scale;
     private readonly Label _title;
     private readonly TextBox _reason;
     private readonly FlowLayoutPanel _buttons;
     private readonly Label _pending;
+    private readonly System.Windows.Forms.Timer _armTimer = new() { Interval = ArmDelayMs };
+    private readonly List<Button> _amountButtons = [];
+    private Button? _send;
+    private int? _chosen;
+    private bool _armed;
     private bool _unlockMode;
 
     /// <summary>(minutes, reason, kind)</summary>
@@ -39,13 +47,21 @@ internal sealed class RequestPanel : FlowLayoutPanel
         };
         Controls.Add(_reason);
 
-        _buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = Color.Transparent, Margin = new Padding(0, 0, 0, 4) };
+        _buttons = new FlowLayoutPanel
+        {
+            AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.TopDown,
+            BackColor = Color.Transparent, Margin = new Padding(0, 0, 0, 4),
+        };
         Controls.Add(_buttons);
         BuildButtons();
 
         _pending = Theme.MakeLabel("", 12 * scale, Theme.Warn);
         _pending.Visible = false;
         Controls.Add(_pending);
+
+        _armTimer.Tick += (_, _) => { _armTimer.Stop(); _armed = true; UpdateButtons(); };
+        Disposed += (_, _) => _armTimer.Dispose();
+        Arm();
     }
 
     /// <summary>Unlock mode asks to open today's access instead of asking for minutes.</summary>
@@ -61,27 +77,76 @@ internal sealed class RequestPanel : FlowLayoutPanel
         }
     }
 
+    /// <summary>Disables the buttons for a moment; call whenever the panel is shown again.</summary>
+    public void Arm()
+    {
+        _armed = false;
+        _armTimer.Stop();
+        _armTimer.Start();
+        UpdateButtons();
+    }
+
+    // Two steps for minutes: pick an amount, then press "send" (in another place), so one stray click sends nothing.
     private void BuildButtons()
     {
         _title.Text = _unlockMode ? "Попросить открыть доступ" : "Попросить ещё времени";
         _reason.PlaceholderText = _unlockMode ? "Например: уроки сделал (необязательно)" : "Зачем? (необязательно)";
         _buttons.Controls.Clear();
+        _amountButtons.Clear();
+        _chosen = null;
         string? Reason() => string.IsNullOrWhiteSpace(_reason.Text) ? null : _reason.Text.Trim();
+
         if (_unlockMode)
         {
-            var b = Theme.MakeButton("Попросить открыть доступ", primary: true);
-            b.Font = Theme.UiFont(11 * _scale, FontStyle.Bold);
-            b.Click += (_, _) => Submitted?.Invoke(0, Reason(), RequestKinds.Unlock);
-            _buttons.Controls.Add(b);
+            _send = Theme.MakeButton("Попросить открыть доступ", primary: true);
+            _send.Font = Theme.UiFont(11 * _scale, FontStyle.Bold);
+            _send.Click += (_, _) => { if (_armed) Submitted?.Invoke(0, Reason(), RequestKinds.Unlock); };
+            _buttons.Controls.Add(_send);
+            UpdateButtons();
             return;
         }
+
+        var amounts = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = Color.Transparent, Margin = new Padding(0) };
         foreach (var m in new[] { 15, 30, 60 })
         {
-            var b = Theme.MakeButton($"+{m} мин", primary: m == 30);
+            var b = Theme.MakeButton($"{m} мин");
             b.Font = Theme.UiFont(11 * _scale, FontStyle.Bold);
-            b.Click += (_, _) => Submitted?.Invoke(m, Reason(), RequestKinds.Time);
-            _buttons.Controls.Add(b);
+            b.Click += (_, _) =>
+            {
+                if (!_armed) return;
+                _chosen = m;
+                UpdateButtons();
+            };
+            _amountButtons.Add(b);
+            amounts.Controls.Add(b);
         }
+        _buttons.Controls.Add(amounts);
+
+        _send = Theme.MakeButton("Отправить запрос", primary: true);
+        _send.Font = Theme.UiFont(11 * _scale, FontStyle.Bold);
+        _send.Margin = new Padding(0, 10, 0, 0);
+        _send.Click += (_, _) =>
+        {
+            if (!_armed || _chosen is not { } minutes) return;
+            Submitted?.Invoke(minutes, Reason(), RequestKinds.Time);
+        };
+        _buttons.Controls.Add(_send);
+        UpdateButtons();
+    }
+
+    private void UpdateButtons()
+    {
+        for (var i = 0; i < _amountButtons.Count; i++)
+        {
+            var b = _amountButtons[i];
+            var selected = _chosen == new[] { 15, 30, 60 }[i];
+            b.Enabled = _armed;
+            b.BackColor = selected ? Theme.Accent : Theme.Surface2;
+            b.ForeColor = selected ? Color.FromArgb(0x0b, 0x12, 0x20) : Theme.Text;
+        }
+        if (_send is null) return;
+        _send.Enabled = _armed && (_unlockMode || _chosen is not null);
+        if (!_unlockMode) _send.Text = _chosen is { } c ? $"Отправить запрос: +{c} мин" : "Выбери время";
     }
 
     /// <summary>Shows either the request controls or "waiting for an answer".</summary>
@@ -91,7 +156,12 @@ internal sealed class RequestPanel : FlowLayoutPanel
         _reason.Visible = !open;
         _buttons.Visible = !open;
         _pending.Visible = open;
-        if (open) _pending.Text = Texts.OpenRequest(minutes!.Value, kind ?? RequestKinds.Time);
+        if (open)
+        {
+            _pending.Text = Texts.OpenRequest(minutes!.Value, kind ?? RequestKinds.Time);
+            _chosen = null;
+            UpdateButtons();
+        }
     }
 }
 
@@ -183,6 +253,7 @@ internal sealed class StatusForm : Form
 
     public void ShowNearTray()
     {
+        _request.Arm();
         var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
         Location = new Point(area.Right - Width - 12, area.Bottom - Height - 12);
         Show();
