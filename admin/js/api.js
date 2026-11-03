@@ -216,9 +216,27 @@ export const api = {
     unwrap(await sb.from('app_groups').delete().eq('id', id));
   },
 
+  // ---------------- adults ----------------
+  async listAdmins() {
+    return unwrap(await sb.rpc('admin_list_admins'));
+  },
+  async addAdmin(email) {
+    return unwrap(await sb.rpc('admin_add_admin', { p_email: email }));
+  },
+  async childAdmins(childId) {
+    return unwrap(await sb.rpc('admin_child_admins', { p_child: childId }));
+  },
+  async setChildAdmin(childId, userId, on) {
+    unwrap(await sb.rpc('admin_set_child_admin', { p_child: childId, p_user: userId, p_on: on }));
+  },
+
   // ---------------- telegram ----------------
   async listTgChats() {
-    return unwrap(await sb.from('tg_chats').select('chat_id,title,linked_by,linked_at').order('linked_at'));
+    return unwrap(await sb.from('tg_chats').select('chat_id,title,linked_by,linked_at,children').order('linked_at'));
+  },
+  // childIds null = all my children
+  async setChatChildren(chatId, childIds) {
+    unwrap(await sb.from('tg_chats').update({ children: childIds }).eq('chat_id', chatId));
   },
   async removeTgChat(chatId) {
     unwrap(await sb.from('tg_chats').delete().eq('chat_id', chatId));

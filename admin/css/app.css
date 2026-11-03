@@ -427,3 +427,14 @@ ul.card.list > li.row:first-child { border-top: 0; }
 .num-stepper { display: flex; gap: 8px; align-items: center; }
 .num-stepper input { flex: 1; text-align: center; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .num-stepper .step { width: 48px; height: 44px; }
+
+/* adults & chat children */
+.chips.wrap { flex-wrap: wrap; overflow: visible; }
+.small-chip { min-height: 32px; padding: 0 12px; font-size: .9rem; }
+.chat-row { padding: 8px 0; border-top: 1px solid var(--line); }
+.chat-row:first-child { border-top: 0; }
+.chat-row .chips { margin-top: 6px; }
+.add-adult { display: flex; gap: 8px; }
+.add-adult input { flex: 1; min-width: 0; }
+.adults .list .row { padding: 6px 0; }
+.adults select { margin-top: 6px; }

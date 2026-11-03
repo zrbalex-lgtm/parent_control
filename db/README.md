@@ -18,11 +18,12 @@ Supabase project (one schema per home project; Auth is shared).
 | `migrations/011_auto_update.sql` | `devices.auto_update`, `device_update_policy` |
 | `migrations/012_account_review.sql` | `device_accounts.reviewed_at`: "unbound" flag only for accounts nobody has decided on |
 | `migrations/013_tamper_notify.sql` | Telegram notice for `login_blocked` tamper events |
+| `migrations/014_child_admins.sql` | Several adults: `child_admins`, scoped RLS and admin RPCs, adults management, per-chat children |
 | `tests/` | Local test run against plain PostgreSQL (with a Supabase stub) |
 
 ## Applying to Supabase
 
-1. Run the migrations in order: `001` … `013`.
+1. Run the migrations in order: `001` … `014`.
 2. Settings → API (Data API) → **Exposed schemas**: add `parent_control`.
 3. Auth → Providers → Email: **disable sign-ups** (shared by all home projects).
 4. Create the parent user (Auth → Users → Add user), then:
@@ -32,6 +33,9 @@ Supabase project (one schema per home project; Auth is shared).
    ```
    Being signed in is not enough: only users in `parent_control.app_admins`
    see this project's data, so other home-project users get nothing here.
+   Since 014 each adult sees only the children listed for them in `child_admins`;
+   further adults are added in the admin app (⚙ Настройки → Взрослые) after creating
+   their user in Supabase Auth.
 
 ## Clients
 

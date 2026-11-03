@@ -52,6 +52,9 @@ insert into app_admins values ('00000000-0000-0000-0000-00000000000a');
 insert into children (id, name, sort_order) values
   ('11111111-1111-1111-1111-111111111111', 'Миша', 1),
   ('22222222-2222-2222-2222-222222222222', 'Аня',  2);
+-- Fixtures are inserted without a user: give both children to the parent (014).
+insert into child_admins (child_id, user_id)
+select id, '00000000-0000-0000-0000-00000000000a' from children;
 
 insert into schedule_weekly (child_id, weekday, limit_minutes, window_from, window_to)
 select '11111111-1111-1111-1111-111111111111', d, 120, '15:00', '20:00'
@@ -487,6 +490,59 @@ update parent_control.device_accounts set child_id = null where windows_sid = 'S
 select pg_temp.check(not (select unbound_account from parent_control.v_device_flags where device_id = :'dev1'),
                      '"no limits" chosen by admin clears the flag');
 reset request.jwt.claim.sub;
+
+-- ---------------------------------------------------------------------
+-- Several adults (014)
+-- ---------------------------------------------------------------------
+reset role;
+insert into auth.users values ('00000000-0000-0000-0000-00000000000c', 'sister@example.com');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select pg_temp.check((select count(*) from parent_control.children) = 2, 'existing admin keeps all children');
+select pg_temp.expect_error($$select parent_control.admin_add_admin('nobody@example.com')$$, 'P0002', 'unknown email rejected');
+select admin_add_admin('Sister@Example.com');
+select pg_temp.check(jsonb_array_length(admin_list_admins()) = 2, 'second adult added');
+
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.check((select count(*) from parent_control.children) = 0, 'new adult sees no children yet');
+select pg_temp.check(jsonb_array_length(admin_dashboard(current_date)->'children') = 0
+                     and jsonb_array_length(admin_dashboard(current_date)->'devices') = 0, 'dashboard empty for new adult');
+
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select admin_set_child_admin('22222222-2222-2222-2222-222222222222', '00000000-0000-0000-0000-00000000000c', true);
+select pg_temp.check(jsonb_array_length(admin_child_admins('22222222-2222-2222-2222-222222222222')) = 2, 'Аня has two adults');
+
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.check((select array_agg(name) from parent_control.children) = array['Аня'], 'sister sees only Аня');
+select pg_temp.check((select count(*) from parent_control.schedule_weekly) = 0, 'no access to Миша schedule');
+select pg_temp.check((select count(*) from parent_control.heartbeats) = 0, 'no access to Миша heartbeats');
+select pg_temp.expect_error($$select parent_control.admin_history('11111111-1111-1111-1111-111111111111', current_date, current_date)$$,
+  '42501', 'no history of other children');
+select pg_temp.expect_error($$select parent_control.admin_child_admins('11111111-1111-1111-1111-111111111111')$$,
+  '42501', 'cannot manage other children');
+insert into parent_control.children (id, name) values ('33333333-3333-3333-3333-333333333333', 'Никита');
+select pg_temp.check((select count(*) from parent_control.children) = 2, 'own new child visible');
+select device_id as dev3 from admin_create_device('Комп Никиты') \gset
+select pg_temp.check((select count(*) from parent_control.devices) = 1, 'own new PC visible');
+select pg_temp.expect_error(format($$select parent_control.admin_reset_device_code(%L)$$, :'dev1'), '42501', 'cannot touch other PCs');
+
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select pg_temp.check(not exists (select 1 from parent_control.children where name = 'Никита'), 'first adult does not see the new child');
+select pg_temp.check(not exists (select 1 from parent_control.devices where id = :'dev3'), 'nor the new PC');
+select pg_temp.expect_error(format($$select parent_control.admin_set_child_admin('11111111-1111-1111-1111-111111111111', %L, false)$$,
+  '00000000-0000-0000-0000-00000000000a'), '22023', 'last adult cannot be removed');
+reset request.jwt.claim.sub;
+
+reset role;
+set role service_role;
+select pg_temp.check(jsonb_array_length(tg_status(42)) = 2, 'chat of the first adult hears about his children');
+select pg_temp.check(not exists (select 1 from jsonb_array_elements(tg_status(42)) e where e->>'name' = 'Никита'), 'not about the sister''s child');
+select pg_temp.check(42 in (select tg_chats_for_child('11111111-1111-1111-1111-111111111111')), 'request notifications routed by child');
+reset role;
+update tg_chats set children = array['11111111-1111-1111-1111-111111111111'::uuid] where chat_id = 42;
+set role service_role;
+select pg_temp.check(jsonb_array_length(tg_status(42)) = 1, 'chat can be narrowed to some children');
+reset role;
 
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

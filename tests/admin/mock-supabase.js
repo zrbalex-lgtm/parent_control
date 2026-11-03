@@ -21,7 +21,10 @@ const store = (window.__store = {
   ],
   tamper_events: [],
   app_groups: [],
-  tg_chats: [{ chat_id: -100123, title: 'Семья', linked_by: 'Alexander', linked_at: iso(86400e3) }],
+  tg_chats: [{ chat_id: -100123, title: 'Семья', linked_by: 'Alexander', linked_at: iso(86400e3), children: null }],
+  admins: [{ user_id: 'u1', email: 'admin@pc.home' }],
+  known_users: [{ user_id: 'u2', email: 'sister@pc.home' }],
+  child_admins: [],
   device_accounts: [],
   time_requests: [],
   bonuses: [],
@@ -215,6 +218,22 @@ export function createClient() {
         return { data: null, error: null };
       }
       if (name === 'admin_tg_link_code') return { data: 'A1B2C3', error: null };
+      if (name === 'admin_list_admins') return { data: store.admins.map((a) => ({ ...a, is_me: a.user_id === 'u1' })), error: null };
+      if (name === 'admin_add_admin') {
+        const u = store.known_users.find((x) => x.email === args.p_email.toLowerCase());
+        if (!u) return { data: null, error: { message: 'user not found', code: 'P0002' } };
+        if (!store.admins.some((a) => a.user_id === u.user_id)) store.admins.push(u);
+        return { data: u, error: null };
+      }
+      if (name === 'admin_child_admins') {
+        const ids = new Set(['u1', ...store.child_admins.filter((x) => x.child_id === args.p_child).map((x) => x.user_id)]);
+        return { data: store.admins.filter((a) => ids.has(a.user_id)).map((a) => ({ ...a, is_me: a.user_id === 'u1' })), error: null };
+      }
+      if (name === 'admin_set_child_admin') {
+        if (args.p_on) store.child_admins.push({ child_id: args.p_child, user_id: args.p_user });
+        else store.child_admins = store.child_admins.filter((x) => !(x.child_id === args.p_child && x.user_id === args.p_user));
+        return { data: null, error: null };
+      }
       if (name === 'admin_history') {
         const days = [];
         for (let d = new Date(`${args.p_from}T00:00:00`); d <= new Date(`${args.p_to}T00:00:00`); d.setDate(d.getDate() + 1)) {

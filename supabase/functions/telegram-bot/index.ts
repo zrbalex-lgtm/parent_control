@@ -127,9 +127,9 @@ type Child = {
   now: { device: string; state: string; app: string | null; title: string | null } | null;
 };
 
-async function statusText() {
-  const children = await rpc<Child[]>("tg_status");
-  if (!children.length) return "Детей пока нет.";
+async function statusText(chatId: number) {
+  const children = await rpc<Child[]>("tg_status", { p_chat_id: chatId });
+  if (!children.length) return "В этом чате нет детей. Отметь их в админке: ⚙ Настройки → Telegram.";
   const now = new Intl.DateTimeFormat("ru-RU", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }).format(new Date());
   const blocks = children.map((c) => {
     const head = c.now
@@ -189,10 +189,10 @@ async function onMessage(msg: any) {
   }
   switch (cmd) {
     case "/status":
-      await sendText(chatId, await statusText());
+      await sendText(chatId, await statusText(chatId));
       break;
     case "/requests": {
-      const pending = await rpc<Info[]>("tg_pending_requests");
+      const pending = await rpc<Info[]>("tg_pending_requests", { p_chat_id: chatId });
       if (!pending.length) await sendText(chatId, "Запросов нет.");
       else for (const r of pending) await postRequest(r, [chatId]);
       break;
@@ -236,7 +236,7 @@ async function onCallback(q: any) {
 
 // ---------------- tamper notifications ----------------
 
-async function tamperText(id: number): Promise<string | null> {
+async function tamperText(id: number): Promise<{ text: string; deviceId: string | null } | null> {
   const { data: e } = await sb.from("tamper_events")
     .select("type,details,windows_user,machine_name,device_id").eq("id", id).maybeSingle();
   if (!e) return null;
@@ -247,12 +247,13 @@ async function tamperText(id: number): Promise<string | null> {
   }
   if (e.type === "login_blocked") {
     const until = e.details?.until ? time(e.details.until) : "?";
-    return [
+    const text = [
       `🚪 <b>${esc(e.details?.user ?? e.windows_user)}</b>: вход в Windows закрыт до <b>${until}</b>`,
       `${esc(e.details?.attempts ?? "10")} раз подряд входил в заблокированное время.`,
       `<i>${esc(device)}</i>`,
       "Запрет снимется сам. Раньше: добавь время в админке (если кончился лимит) или на ПК от администратора запусти reset-logon.cmd.",
     ].join("\n");
+    return { text, deviceId: e.device_id };
   }
   return null;
 }
@@ -263,9 +264,12 @@ async function tamperText(id: number): Promise<string | null> {
 async function onInternal(body: any) {
   switch (body.event) {
     case "request": {
+      // Only chats that hear about this child.
       const r = await rpc<Info>("tg_request_info", { p_id: body.request_id });
-      const { data: chats } = await sb.from("tg_chats").select("chat_id");
-      if (r) await postRequest(r, (chats ?? []).map((c) => c.chat_id));
+      const { data: req } = await sb.from("time_requests").select("child_id").eq("id", body.request_id).maybeSingle();
+      if (!r || !req) return { ok: true };
+      const chats = await rpc<number[]>("tg_chats_for_child", { p_child: req.child_id });
+      await postRequest(r, chats ?? []);
       return { ok: true };
     }
     case "decided":
@@ -273,10 +277,10 @@ async function onInternal(body: any) {
       return { ok: true };
     case "tamper": {
       // request_id carries the tamper event id here
-      const text = await tamperText(body.request_id);
-      if (!text) return { ok: true };
-      const { data: chats } = await sb.from("tg_chats").select("chat_id");
-      for (const c of chats ?? []) await sendText(c.chat_id, text);
+      const notice = await tamperText(body.request_id);
+      if (!notice) return { ok: true };
+      const chats = notice.deviceId ? await rpc<number[]>("tg_chats_for_device", { p_device: notice.deviceId }) : [];
+      for (const chatId of chats ?? []) await sendText(chatId, notice.text);
       return { ok: true };
     }
     case "setup": {

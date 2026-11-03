@@ -57,6 +57,8 @@ export function humanError(err) {
   if (/JWT expired/i.test(msg)) return 'Сессия истекла, войди заново';
   if (/forbidden|permission denied|42501/i.test(msg)) return 'Нет доступа';
   if (/invalid regex|invalid regular expression/i.test(msg)) return 'Ошибка в регулярном выражении';
+  if (/user not found/i.test(msg)) return 'Такого пользователя нет в Supabase — сначала создай его (Authentication → Users)';
+  if (/last adult/i.test(msg)) return 'Нельзя убрать последнего взрослого';
   return msg;
 }
 

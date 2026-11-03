@@ -32,7 +32,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-page.on('console', (m) => { if (m.type() === 'error' && !/Invalid login/.test(m.text())) errors.push(`console: ${m.text()}`); });
+page.on('console', (m) => { if (m.type() === 'error' && !/Invalid login|user not found/.test(m.text())) errors.push(`console: ${m.text()}`); });
 await page.route('https://cdn.jsdelivr.net/**', async (route) => route.fulfill({
   contentType: 'text/javascript', body: await readFile(join(here, 'mock-supabase.js')),
 }));
@@ -387,6 +387,39 @@ await page.getByText('A1B2C3', { exact: true }).waitFor();
 if ((await page.getByRole('link', { name: /Открыть @Parent_control_zrb_bot/ }).getAttribute('href')) !== 'https://t.me/Parent_control_zrb_bot?start=A1B2C3') fail('deep link with code');
 await page.screenshot({ path: `${shots}/18-telegram.png` });
 await page.getByRole('button', { name: 'Готово' }).click();
+
+// chat hears about chosen children only
+await page.getByRole('group', { name: 'Дети в чате Семья' }).getByRole('button', { name: 'Анна' }).click();
+await page.waitForFunction(() => JSON.stringify(window.__store.tg_chats[0].children) !== 'null');
+if ((await store()).tg_chats[0].children.length !== 1) fail('chat narrowed to one child');
+await page.waitForFunction(() => document.querySelector('[aria-label="Дети в чате Семья"] button[aria-pressed="false"]'));
+step('settings: chat children');
+
+// adults
+await page.getByLabel('Email взрослого').fill('nobody@pc.home');
+await page.getByRole('button', { name: 'Добавить', exact: true }).click();
+await page.getByText(/Такого пользователя нет в Supabase/).waitFor();
+await page.getByLabel('Email взрослого').fill('sister@pc.home');
+await page.getByRole('button', { name: 'Добавить', exact: true }).click();
+await page.locator('#adults-title').locator('..').getByText('sister@pc.home').waitFor();
+await page.screenshot({ path: `${shots}/20-settings-adults.png`, fullPage: true });
+step('settings: adult added by email');
+
+await page.getByRole('link', { name: /Дети/ }).click();
+await page.getByRole('button', { name: 'Изменить: Анна' }).click();
+await page.getByLabel('Добавить взрослого').selectOption({ label: 'sister@pc.home' });
+await page.getByText('Взрослый добавлен').waitFor();
+await page.getByRole('button', { name: 'Убрать: sister@pc.home' }).waitFor();
+await page.screenshot({ path: `${shots}/21-child-adults.png` });
+await page.getByRole('button', { name: 'Убрать: sister@pc.home' }).click();
+await page.getByRole('dialog', { name: /Убрать sister/ }).getByRole('button', { name: 'Убрать' }).click();
+await page.getByLabel('Добавить взрослого').waitFor();
+if ((await store()).child_admins.length !== 0) fail('adult removed from child');
+await page.keyboard.press('Escape');
+step('child: adults added and removed');
+
+await page.getByRole('link', { name: 'Настройки' }).click();
+await page.getByRole('heading', { name: 'Telegram' }).waitFor();
 await page.getByRole('button', { name: 'Отключить: Семья' }).click();
 await page.getByRole('dialog').getByRole('button', { name: 'Отключить' }).click();
 await page.getByText('Подключённых чатов нет.').waitFor();

@@ -24,4 +24,5 @@ run migrations/010_telegram.sql
 run migrations/011_auto_update.sql
 run migrations/012_account_review.sql
 run migrations/013_tamper_notify.sql
+run migrations/014_child_admins.sql
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f tests/01_rpc_tests.sql 2>&1 >/dev/null | sed 's/^psql:[^ ]* NOTICE:  //'
