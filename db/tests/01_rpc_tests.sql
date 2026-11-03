@@ -544,5 +544,28 @@ set role service_role;
 select pg_temp.check(jsonb_array_length(tg_status(42)) = 1, 'chat can be narrowed to some children');
 reset role;
 
+-- ---------------------------------------------------------------------
+-- App names (015)
+-- ---------------------------------------------------------------------
+reset role;
+select pg_temp.check((select app from fn_app_label('chrome.exe', 'Google Chrome', 'Cat videos - YouTube - Google Chrome')) = 'Chrome: YouTube', 'chrome split by site');
+select pg_temp.check((select app from fn_app_label('msedge.exe', 'Microsoft Edge', 'Inbox and 2 more pages - Microsoft' || chr(8203) || ' Edge')) = 'Edge: Inbox', 'edge suffixes removed');
+select pg_temp.check((select app from fn_app_label('chrome.exe', 'Google Chrome', 'Google Chrome')) = 'Chrome', 'bare browser title');
+select pg_temp.check((select app from fn_app_label('explorer.exe', 'Microsoft® Windows® Operating System', '')) = 'Windows: проводник и рабочий стол', 'explorer named');
+select pg_temp.check((select app from fn_app_label(null, null, null)) = 'Нет данных об окне', 'no window named');
+select pg_temp.check((select app from fn_app_label('chrome.exe', 'Google Chrome', '(12) Cat videos - YouTube - Google Chrome')) = 'Chrome: YouTube', 'unread counter dropped');
+select pg_temp.check((select app from fn_app_label('ParentControl.Guard.exe', 'Parent Control', 'x')) = 'Экранное время (блокировка, запросы)', 'own windows named');
+insert into heartbeats (device_id, minute_ts, local_date, state, windows_sid, child_id, exe_name, product_name, window_title)
+values (:'dev1', date_trunc('minute', now()) + interval '30 seconds' - interval '2 hours', current_date, 'active', 'S-1-5-21-misha',
+        '11111111-1111-1111-1111-111111111111', 'chrome.exe', 'Google Chrome', 'Funny cats - YouTube - Google Chrome')
+on conflict do nothing;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select pg_temp.check(admin_history('11111111-1111-1111-1111-111111111111', current_date, current_date)->'apps' @> '[{"app":"Chrome: YouTube","exe":"chrome.exe"}]',
+                     'history shows the site');
+select pg_temp.check(admin_app_titles('11111111-1111-1111-1111-111111111111', current_date, current_date, 'Chrome: YouTube') @> '[{"title":"Funny cats - YouTube"}]',
+                     'titles behind an app');
+reset request.jwt.claim.sub;
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

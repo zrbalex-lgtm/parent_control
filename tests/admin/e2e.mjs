@@ -348,7 +348,16 @@ await page.waitForFunction(() => document.querySelectorAll('.chart .col').length
 await page.getByRole('button', { name: '7 дней' }).click();
 await page.waitForFunction(() => document.querySelectorAll('.chart .col').length === 7);
 await page.getByText('Google Chrome').first().waitFor();
-step('history: chart, periods, apps, sessions');
+// pick one day, then back to the whole period
+await page.locator('.chart .col').nth(4).click();
+await page.locator('.day-scope').waitFor();
+if (!(await page.evaluate(() => window.__calls.some((c) => c.rpc === 'admin_history' && c.args.p_from === c.args.p_to)))) fail('day details requested');
+await page.locator('.app-name', { hasText: 'Google Chrome' }).click();
+await page.getByText('YouTube — Google Chrome').waitFor();
+await page.screenshot({ path: `${shots}/22-history-day.png`, fullPage: true });
+await page.getByRole('button', { name: 'Весь период' }).click();
+await page.locator('.day-scope').waitFor({ state: 'detached' });
+step('history: chart, periods, day filter, app windows, sessions');
 await page.screenshot({ path: `${shots}/15-history.png`, fullPage: true });
 
 await page.getByRole('button', { name: 'В группу: Java(TM) Platform SE' }).click();

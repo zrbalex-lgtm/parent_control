@@ -246,7 +246,7 @@ export function createClient() {
         for (const a of SEEN_APPS) {
           const g = groupOf(a);
           const key = g || a.product || a.exe;
-          const cur = byApp.get(key) || { app: key, grouped: !!g, minutes: 0 };
+          const cur = byApp.get(key) || { app: key, grouped: !!g, minutes: 0, exe: a.exe };
           cur.minutes += a.minutes;
           byApp.set(key, cur);
         }
@@ -261,6 +261,10 @@ export function createClient() {
               ended_at: new Date(t0 - 86400e3 + 75 * 60e3).toISOString(), minutes: 75, top_app: 'Google Chrome' },
           ],
         }, error: null };
+      }
+      if (name === 'admin_app_titles') {
+        const hits = SEEN_APPS.filter((a) => (groupOf(a) || a.product || a.exe) === args.p_app);
+        return { data: hits.map((a) => ({ title: a.title, exe: a.exe, minutes: args.p_from === args.p_to ? Math.round(a.minutes / 7) : a.minutes })), error: null };
       }
       if (name === 'admin_ungrouped') {
         return { data: SEEN_APPS.filter((a) => !groupOf(a)), error: null };

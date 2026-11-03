@@ -193,6 +193,9 @@ export const api = {
   async history(childId, fromStr, toStr) {
     return unwrap(await sb.rpc('admin_history', { p_child: childId, p_from: fromStr, p_to: toStr }));
   },
+  async appTitles(childId, fromStr, toStr, app) {
+    return unwrap(await sb.rpc('admin_app_titles', { p_child: childId, p_from: fromStr, p_to: toStr, p_app: app }));
+  },
   async ungroupedApps(days = 7) {
     return unwrap(await sb.rpc('admin_ungrouped', { p_days: days }));
   },
