@@ -1,6 +1,6 @@
 // Telegram bot for the parent control app (Supabase Edge Function "telegram-bot").
 // - Telegram webhook: /start CODE, /link CODE, /status, /requests, /help, approve/deny buttons.
-// - Internal calls from the database (pg_net trigger): new request -> post to all linked chats,
+// - Internal calls from the database (pg_net trigger): new request -> post to the chats of that child,
 //   decided -> update every message about it; "setup" registers the webhook and commands.
 // Both callers must present the shared secret from parent_control.tg_config.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
