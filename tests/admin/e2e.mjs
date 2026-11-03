@@ -363,6 +363,16 @@ await page.screenshot({ path: `${shots}/15-history.png`, fullPage: true });
 await page.getByRole('button', { name: 'В группу: Java(TM) Platform SE' }).click();
 if ((await page.getByLabel('Группа').inputValue()) !== 'Java Platform SE') fail('group name suggested from product');
 await page.getByLabel('Группа').fill('Minecraft');
+// drag-select text and release outside the sheet: the sheet must stay open
+{
+  const box = await page.getByLabel('Группа').boundingBox();
+  await page.mouse.move(box.x + box.width - 5, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(5, 60, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  if (!(await page.getByRole('dialog').isVisible())) fail('drag-select outside closed the sheet');
+}
 await page.getByText(/За 7 дней попадает 5 ч 40 мин/).waitFor();
 await page.screenshot({ path: `${shots}/16-rule.png` });
 await page.getByRole('button', { name: 'Сохранить' }).click();

@@ -80,9 +80,16 @@ export function modal(title, build) {
         h('h2', {}, title),
         h('button', { class: 'icon-btn', 'aria-label': 'Закрыть', onclick: () => close(undefined) }, '✕')),
       h('div', { class: 'sheet-body' }, build(close)));
+    // Close on a tap on the dimmed area only if the press also started there:
+    // selecting text inside the sheet and releasing the mouse outside must not close it.
+    let downOnBackdrop = false;
     const backdrop = h('div', {
       class: 'backdrop',
-      onclick: (e) => { if (e.target === backdrop) close(undefined); },
+      onpointerdown: (e) => { downOnBackdrop = e.target === backdrop; },
+      onclick: (e) => {
+        if (e.target === backdrop && downOnBackdrop) close(undefined);
+        downOnBackdrop = false;
+      },
     }, sheet);
     document.body.append(backdrop);
     document.addEventListener('keydown', onKey);
