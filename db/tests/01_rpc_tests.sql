@@ -462,5 +462,17 @@ select pg_temp.check(tg_status()->0->>'name' = 'Миша' and (tg_status()->0->>
 reset role;
 select pg_temp.check((select count(*) from bonuses where reason = 'Запрос: дорисовать' and minutes = 30) = 1, 'approval from bot adds bonus');
 
+-- ---------------------------------------------------------------------
+-- Auto-update policy (011)
+-- ---------------------------------------------------------------------
+set role anon;
+select pg_temp.expect_error(format($$select parent_control.device_update_policy(%L, 'bad')$$, :'dev1'), '28000', 'update policy needs the secret');
+select pg_temp.check((device_update_policy(:'dev1', :'sec1b')->>'auto_update')::boolean, 'auto update on by default');
+reset role;
+update devices set auto_update = false where id = :'dev1';
+set role anon;
+select pg_temp.check(not (device_update_policy(:'dev1', :'sec1b')->>'auto_update')::boolean, 'auto update can be switched off');
+reset role;
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

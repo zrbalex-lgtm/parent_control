@@ -12,6 +12,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write   # create GitHub Releases for auto-update
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -87,6 +89,12 @@ jobs:
           if ((Get-Service ParentControlGuard).Status -ne 'Running') { throw 'service not running after update' }
           Write-Host 'update ok'
 
+          # Unattended update path used by the service (backup, install, verify).
+          & .\publish\guard\update.ps1 -InstallDir $dir -Log (Join-Path $env:RUNNER_TEMP 'update.log')
+          if ($LASTEXITCODE) { Get-Content (Join-Path $env:RUNNER_TEMP 'update.log'); throw "update.ps1 failed: $LASTEXITCODE" }
+          if ((Get-Service ParentControlGuard).Status -ne 'Running') { throw 'service not running after update.ps1' }
+          Write-Host 'self-update script ok'
+
           & "$dir\uninstall.ps1" -NoPause -RemoveData -InstallDir $dir
           if ($LASTEXITCODE) { throw "uninstall failed: $LASTEXITCODE" }
           if (Get-Service ParentControlGuard -ErrorAction SilentlyContinue) {
@@ -108,3 +116,23 @@ jobs:
           name: parent-control-guard-win-x64
           path: publish/guard
           retention-days: 30
+
+      # A new version (Directory.Build.props) on main becomes a GitHub Release; installed guards pick it up.
+      - name: Release for auto-update
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = ([xml](Get-Content windows/Directory.Build.props)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          $tag = "v$version"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { Write-Host "Release $tag exists; nothing to publish"; exit 0 }
+          $asset = 'parent-control-guard-win-x64.zip'
+          Compress-Archive -Path publish/guard/* -DestinationPath $asset -Force
+          $item = Get-Item $asset
+          $sha = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{ version = $version; asset = $asset; sha256 = $sha; size = $item.Length } | ConvertTo-Json | Set-Content manifest.json -Encoding utf8NoBOM
+          Get-Content manifest.json
+          gh release create $tag $asset manifest.json --title "Guard $version" --notes "Built from ${{ github.sha }}. Installed guards update automatically." --latest
+          if ($LASTEXITCODE) { throw "release failed" }

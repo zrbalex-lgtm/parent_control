@@ -60,6 +60,11 @@ internal sealed class FakeApi : IGuardApi
         return Task.FromResult(new ReportResult(events.Count, ServerTamperLocked));
     }
 
+    public bool AutoUpdate { get; set; } = true;
+
+    public Task<UpdatePolicy> UpdatePolicyAsync(DeviceCredentials creds, CancellationToken ct) =>
+        Throw is not null ? Task.FromException<UpdatePolicy>(Throw) : Task.FromResult(new UpdatePolicy(AutoUpdate));
+
     public Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct)
     {
         if (Throw is not null) throw Throw;

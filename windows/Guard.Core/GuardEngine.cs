@@ -239,6 +239,48 @@ public sealed class GuardEngine
         ReportTamper(TamperTypes.ClockChanged, new() { ["kind"] = "timezone", ["from"] = previous, ["to"] = zone }, user);
     }
 
+    // ---------------- updates ----------------
+
+    /// <summary>Asks the server whether this PC may update now; false when unregistered or offline.</summary>
+    public async Task<bool> UpdateAllowedAsync(CancellationToken ct)
+    {
+        if (_creds is null) return false;
+        try
+        {
+            return (await _api.UpdatePolicyAsync(_creds, ct)).AutoUpdate;
+        }
+        catch (Exception ex) when (ex is ApiException or DeviceUnauthorizedException)
+        {
+            _log.LogInformation("Update policy unavailable: {Message}", ex.Message);
+            return false;
+        }
+    }
+
+    public void NoteUpdateAttempt(string version)
+    {
+        State.UpdateAttemptVersion = version;
+        SaveState();
+    }
+
+    /// <summary>Called at start: did the last update attempt end up running the new version?</summary>
+    public void CheckUpdateOutcome(string runningVersion)
+    {
+        if (State.UpdateAttemptVersion is not { } attempted) return;
+        State.UpdateAttemptVersion = null;
+        if (UpdatePlanner.Parse(attempted) == UpdatePlanner.Parse(runningVersion))
+        {
+            _log.LogInformation("Updated to {Version}", runningVersion);
+            State.FailedUpdateVersion = null;
+            State.FailedUpdateAt = null;
+            SaveState();
+            return;
+        }
+        _log.LogWarning("Update to {Version} failed; still running {Running}", attempted, runningVersion);
+        State.FailedUpdateVersion = attempted;
+        State.FailedUpdateAt = _time.GetUtcNow();
+        ReportTamper(TamperTypes.UpdateFailed, new() { ["version"] = attempted, ["running"] = runningVersion });
+    }
+
     // ---------------- tamper ----------------
 
     /// <summary>Queues a tamper event and, for lock events, locks child accounts unless the admin chose "notify".</summary>

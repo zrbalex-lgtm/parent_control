@@ -142,6 +142,7 @@ namespace ParentControl.Service
             builder.Services.AddSingleton<WindowsSessionControl>();
             builder.Services.AddSingleton<ISessionControl>(sp => sp.GetRequiredService<WindowsSessionControl>());
             builder.Services.AddSingleton<Enforcer>();
+            builder.Services.AddSingleton<Updater>();
             builder.Services.AddHostedService<GuardWorker>();
 
             await builder.Build().RunAsync();

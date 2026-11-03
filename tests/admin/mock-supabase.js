@@ -13,7 +13,7 @@ const store = (window.__store = {
     { id: uid(), name: 'Комп в детской', machine_name: 'KIDS-PC', is_enabled: true,
       registered_at: iso(86400e3), reg_code_expires_at: null, client_version: '0.1.0',
       last_seen_at: iso(30e3), clock_skew_sec: 420, created_at: iso(86400e3),
-      tamper_locked_since: iso(600e3), config_state: 'restored' },
+      tamper_locked_since: iso(600e3), config_state: 'restored', auto_update: true },
     { id: uid(), name: 'Ноутбук', machine_name: null, is_enabled: true,
       registered_at: null, reg_code_expires_at: new Date(now + 20 * 3600e3).toISOString(),
       client_version: null, last_seen_at: null, clock_skew_sec: null, created_at: iso(3600e3),

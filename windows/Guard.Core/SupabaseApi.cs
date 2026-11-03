@@ -10,6 +10,7 @@ public interface IGuardApi
     Task<SyncResponse> SyncAsync(SyncRequest request, CancellationToken ct);
     Task<RegisterResult> RegisterAsync(string code, string machineName, string clientVersion, CancellationToken ct);
     Task<ReportResult> ReportAsync(DeviceCredentials creds, IReadOnlyList<TamperEvent> events, CancellationToken ct);
+    Task<UpdatePolicy> UpdatePolicyAsync(DeviceCredentials creds, CancellationToken ct);
     /// <summary>Unauthenticated "my configuration is gone" signal.</summary>
     Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct);
 }
@@ -58,6 +59,13 @@ public sealed class SupabaseApi : IGuardApi
             ["p_device_id"] = creds.DeviceId,
             ["p_secret"] = creds.Secret,
             ["p_events"] = events,
+        }, ct);
+
+    public Task<UpdatePolicy> UpdatePolicyAsync(DeviceCredentials creds, CancellationToken ct) =>
+        PostRpcAsync<object, UpdatePolicy>("device_update_policy", new Dictionary<string, object>
+        {
+            ["p_device_id"] = creds.DeviceId,
+            ["p_secret"] = creds.Secret,
         }, ct);
 
     public async Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct)

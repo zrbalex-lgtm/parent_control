@@ -16,6 +16,7 @@ public sealed class GuardWorker(
     TrayHub hub,
     TrayLauncher launcher,
     WindowsSessionControl control,
+    Updater updater,
     DataDirectory data,
     TimeProvider time,
     ILogger<GuardWorker> log) : BackgroundService
@@ -114,6 +115,7 @@ public sealed class GuardWorker(
 
         var decision = policy.Evaluate(sample.Sid);
         enforcer.Apply(sample, decision);
+        updater.Tick(childActive: decision.Restricted && HeartbeatStates.IsCounted(sample.State));
 
         if (sample.SessionId is { } session && HeartbeatStates.IsCounted(sample.State))
         {

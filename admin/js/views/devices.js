@@ -34,6 +34,7 @@ function flagChips(d) {
   if (f.unbound_account) out.push('Есть непривязанная учётка');
   if (f.long_silence) out.push('Молчит больше суток');
   if (f.offline_minutes_7d > 0) out.push(`Без сети за неделю: ${f.offline_minutes_7d} мин`);
+  if (d.registered_at && d.auto_update === false) out.push('Автообновление выключено');
   const chips = out.map((t) => h('span', { class: 'flag' }, t));
   // Tamper state links to the security tab.
   if (d.tamper_locked_since) chips.unshift(h('a', { class: 'flag danger', href: '#/security' }, 'Заблокирован после вмешательства'));
@@ -106,6 +107,7 @@ export async function render({ api }) {
           h('button', { onclick: () => rename(d) }, 'Переименовать'),
           d.tamper_locked_since ? h('button', { onclick: () => unlockTamper(d) }, 'Разблокировать после вмешательства') : null,
           h('button', { onclick: () => toggle(d) }, d.is_enabled ? 'Отключить' : 'Включить'),
+          d.registered_at ? h('button', { onclick: () => toggleUpdates(d) }, d.auto_update === false ? 'Включить автообновление' : 'Выключить автообновление') : null,
           h('button', { onclick: () => newCode(d) }, d.registered_at ? 'Переустановка: новый код' : 'Новый код'),
           h('button', { class: 'danger-text', onclick: () => remove(d) }, 'Удалить')));
       const flags = flagChips(d);
@@ -157,6 +159,15 @@ export async function render({ api }) {
     await busy(null, async () => {
       await api.clearTamperLock(d.id);
       toast('Разблокировано', 'ok');
+      await refresh();
+    });
+  }
+
+  async function toggleUpdates(d) {
+    const on = d.auto_update === false;
+    await busy(null, async () => {
+      await api.updateDevice(d.id, { auto_update: on });
+      toast(on ? 'Автообновление включено' : 'Автообновление выключено: версия останется как есть', 'ok');
       await refresh();
     });
   }

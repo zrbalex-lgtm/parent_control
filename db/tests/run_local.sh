@@ -21,4 +21,5 @@ run migrations/007_hardening.sql
 run migrations/008_local_tamper_clear.sql
 run migrations/009_reports.sql
 run migrations/010_telegram.sql
+run migrations/011_auto_update.sql
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f tests/01_rpc_tests.sql 2>&1 >/dev/null | sed 's/^psql:[^ ]* NOTICE:  //'

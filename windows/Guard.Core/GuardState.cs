@@ -37,6 +37,11 @@ public sealed class GuardState
     public Guid? KnownDeviceId { get; set; }
     public DateTimeOffset? LastBeaconAt { get; set; }
 
+    /// <summary>Version an update was started to; checked on the next start to see if it worked.</summary>
+    public string? UpdateAttemptVersion { get; set; }
+    public string? FailedUpdateVersion { get; set; }
+    public DateTimeOffset? FailedUpdateAt { get; set; }
+
     /// <summary>Windows time zone seen last; a change is reported.</summary>
     public string? TimeZone { get; set; }
 

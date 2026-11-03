@@ -118,6 +118,12 @@ if ((await store()).devices[0].is_enabled !== false) fail('device disabled');
 step('device disabled via menu + confirm');
 await page.screenshot({ path: `${shots}/05-devices-after.png`, fullPage: true });
 
+await page.getByLabel('Действия: Комп в детской').click();
+await page.getByRole('button', { name: 'Выключить автообновление' }).click();
+await page.getByText('Автообновление выключено', { exact: true }).waitFor();
+if ((await store()).devices[0].auto_update !== false) fail('auto update switched off');
+step('auto update toggle');
+
 // ---------- security ----------
 await page.getByText('Заблокирован после вмешательства').first().waitFor();
 await page.getByText('Конфиг восстановлен').waitFor();

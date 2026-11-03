@@ -18,7 +18,7 @@ const hhmm = (t) => (t ? String(t).slice(0, 5) : null);
 
 const DEVICE_COLUMNS =
   'id,name,machine_name,is_enabled,registered_at,reg_code_expires_at,' +
-  'client_version,last_seen_at,clock_skew_sec,created_at,tamper_locked_since,config_state';
+  'client_version,last_seen_at,clock_skew_sec,created_at,tamper_locked_since,config_state,auto_update';
 
 export const api = {
   // ---------------- auth ----------------
