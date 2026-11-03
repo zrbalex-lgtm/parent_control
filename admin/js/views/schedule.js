@@ -10,18 +10,21 @@ const UNLIMITED_OVERRIDE = MAX_LIMIT; // overrides use null for "inherit", so "n
 
 let selectedChildId = null; // survives tab switches within the session
 
-// Limit editor: [−] 2:00 [+] [∞]. value null = no limit.
+// Limit editor: [−] 2:00 [+]; tapping the value toggles "no limit" (∞). value null = no limit.
 function limitControl(value, onChange, label) {
   let current = value;
-  const display = h('output', { class: 'limit-value', 'aria-live': 'polite' });
   const minus = h('button', { type: 'button', class: 'step', 'aria-label': `${label}: меньше на 15 минут` }, '−');
   const plus = h('button', { type: 'button', class: 'step', 'aria-label': `${label}: больше на 15 минут` }, '+');
-  const inf = h('button', { type: 'button', class: 'chip-toggle', 'aria-label': `${label}: без лимита` }, '∞');
+  // The value doubles as the ∞ switch, so a day fits one line on a phone.
+  const display = h('button', {
+    type: 'button', class: 'limit-value', 'aria-label': `${label}: без лимита`,
+    title: 'Нажми, чтобы убрать или вернуть лимит',
+  });
 
   const sync = () => {
-    display.textContent = current === null ? 'без лимита' : fmtMinutes(current);
-    display.classList.toggle('muted', current === null);
-    inf.setAttribute('aria-pressed', String(current === null));
+    display.textContent = current === null ? '∞' : fmtMinutes(current);
+    display.classList.toggle('unlimited', current === null);
+    display.setAttribute('aria-pressed', String(current === null));
     minus.disabled = current === null || current <= 0;
     plus.disabled = current !== null && current >= MAX_LIMIT;
   };
@@ -29,9 +32,9 @@ function limitControl(value, onChange, label) {
 
   minus.addEventListener('click', () => set(Math.max(0, current - STEP)));
   plus.addEventListener('click', () => set(current === null ? 60 : Math.min(MAX_LIMIT, current + STEP)));
-  inf.addEventListener('click', () => set(current === null ? 120 : null));
+  display.addEventListener('click', () => set(current === null ? 120 : null));
   sync();
-  return h('div', { class: 'limit' }, minus, display, plus, inf);
+  return h('div', { class: 'limit' }, minus, display, plus);
 }
 
 export async function render({ api, navigate }) {
@@ -88,7 +91,7 @@ export async function render({ api, navigate }) {
       return h('div', { class: `day-row${i >= 5 ? ' weekend' : ''}` },
         h('span', { class: 'day-label', title: WEEKDAYS_LONG[i] }, WEEKDAYS[i]),
         limitControl(d.limit_minutes, (v) => { d.limit_minutes = v; markDirty(); }, WEEKDAYS_LONG[i]),
-        h('div', { class: 'window' }, from, h('span', { class: 'muted' }, '–'), to, warn));
+        h('div', { class: 'window' }, from, h('span', { class: 'muted' }, '–'), to), warn);
     });
 
     const copyWeekdays = h('button', {
@@ -113,7 +116,7 @@ export async function render({ api, navigate }) {
 
     weeklyBox.replaceChildren(
       h('div', { class: 'section-head' }, h('h2', { id: 'weekly-title' }, 'Каждую неделю'), copyWeekdays),
-      h('p', { class: 'muted small' }, 'Лимит в день и окно, когда можно сидеть за компьютером (время ПК).'),
+      h('p', { class: 'muted small' }, 'Лимит в день и окно, когда можно сидеть за компьютером (время ПК). Нажми на лимит, чтобы сделать его ∞.'),
       h('div', { class: 'week' }, rows),
       h('div', { class: 'actions' }, h('span', { class: 'grow' }), saveBtn));
   }

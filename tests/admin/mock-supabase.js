@@ -39,8 +39,8 @@ store.tamper_events.push(
   { id: 3, device_id: store.devices[0].id, machine_name: 'KIDS-PC', occurred_at: iso(90000e3), received_at: iso(90000e3),
     type: 'tray_unresponsive', details: {}, windows_user: 'misha', verified: true, handled_at: iso(80000e3) });
 store.device_accounts.push(
-  { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-1', windows_user: 'misha', child_id: null, last_seen_at: iso(60e3) },
-  { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-2', windows_user: 'papa', child_id: null, last_seen_at: iso(7200e3) });
+  { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-1', windows_user: 'misha', child_id: null, last_seen_at: iso(60e3), reviewed_at: null },
+  { id: uid(), device_id: store.devices[0].id, windows_sid: 'S-1-5-21-2', windows_user: 'papa', child_id: null, last_seen_at: iso(7200e3), reviewed_at: iso(86400e3) });
 
 // Apps seen on the PCs (for history, ungrouped list and rule preview).
 const SEEN_APPS = [
@@ -68,7 +68,7 @@ function flagsView() {
   return store.devices.map((d) => ({
     device_id: d.id,
     clock_skew: Math.abs(d.clock_skew_sec || 0) > 300,
-    unbound_account: store.device_accounts.some((a) => a.device_id === d.id && !a.child_id),
+    unbound_account: store.device_accounts.some((a) => a.device_id === d.id && !a.child_id && !a.reviewed_at),
     long_silence: d.is_enabled && !!d.last_seen_at && now - Date.parse(d.last_seen_at) > 86400e3,
     offline_minutes_7d: d.registered_at ? 12 : 0,
   }));
@@ -113,7 +113,10 @@ class Query {
         for (const p of this.payload) rows.push(toPgTime({ id: uid(), created_at: new Date().toISOString(), ...p }));
         return { data: null, error: null };
       case 'update':
-        for (const r of rows.filter(match)) Object.assign(r, toPgTime({ ...this.payload }));
+        for (const r of rows.filter(match)) {
+          Object.assign(r, toPgTime({ ...this.payload }));
+          if (this.table === 'device_accounts' && 'child_id' in this.payload) r.reviewed_at = new Date().toISOString();
+        }
         return { data: null, error: null };
       case 'delete':
         store[this.table] = rows.filter((r) => !match(r));

@@ -89,8 +89,12 @@ step('child renamed');
 
 // ---------- bind account ----------
 await page.getByRole('link', { name: /^ПК$/ }).click();
+if ((await page.getByLabel(/papa/).inputValue()) !== '') fail('reviewed account shows "no limits"');
+if ((await page.getByLabel(/misha/).inputValue()) !== '__new') fail('new account asks for a choice');
+await page.getByText('Есть непривязанная учётка').waitFor();
 await page.getByLabel(/misha/).selectOption({ label: 'Миша' });
 await page.getByText('Учётка привязана').waitFor();
+await page.waitForFunction(() => !document.body.innerText.includes('Есть непривязанная учётка'));
 {
   const s = await store();
   const misha = s.children.find((c) => c.name === 'Миша');
@@ -241,9 +245,13 @@ await mishaCard.getByRole('button', { name: 'Добавить 30 минут: М�
 await page.getByText('Миша: +30 мин').waitFor();
 await mishaCard.getByText('(бонус +45)').waitFor();
 await mishaCard.getByRole('button', { name: /с причиной/ }).click();
-await page.getByLabel('Минуты (минус — забрать время)').fill('-10');
+await page.getByRole('dialog').getByRole('button', { name: '− Забрать' }).click();
+await page.getByRole('button', { name: 'Меньше на 5 минут' }).click(); // 30 -> 25
+await page.getByLabel('Минуты').fill('15');
+await page.getByRole('button', { name: 'Меньше на 5 минут' }).click(); // 15 -> 10
 await page.getByLabel('Причина (необязательно)').fill('не убрал комнату');
-await page.getByRole('dialog').getByRole('button', { name: 'Сохранить' }).click();
+await page.screenshot({ path: `${shots}/19-custom-time.png` });
+await page.getByRole('dialog').getByRole('button', { name: 'Забрать 10 мин' }).click();
 await page.getByText('Миша: -10 мин').waitFor();
 await mishaCard.getByText('(бонус +35)').waitFor();
 

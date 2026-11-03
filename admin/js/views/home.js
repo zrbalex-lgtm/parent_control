@@ -269,22 +269,57 @@ export async function render({ api }) {
 
   async function customBonus(c, today) {
     const done = await modal(`Время для «${c.name}»`, (close) => {
-      const minutes = h('input', { id: 'bonus-min', type: 'number', inputmode: 'numeric', step: '5', value: '30', min: '-240', max: '240' });
+      // Phones have no minus key on the numeric keyboard: the sign is a switch, the number stays positive.
+      let sign = 1;
+      const minutes = h('input', { id: 'bonus-min', type: 'number', inputmode: 'numeric', step: '5', value: '30', min: '5', max: '240' });
+      const modeBtn = (value, text) => h('button', {
+        type: 'button', class: value === sign ? 'active' : '', 'aria-pressed': String(value === sign),
+        onclick: () => {
+          sign = value;
+          for (const b of modes.children) {
+            const on = b === modes.children[value === 1 ? 0 : 1];
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-pressed', String(on));
+          }
+          syncSave();
+        },
+      }, text);
+      const modes = h('div', { class: 'segmented block-seg', role: 'group', 'aria-label': 'Добавить или забрать' });
+      modes.append(modeBtn(1, '+ Добавить'), modeBtn(-1, '− Забрать'));
+      const stepBy = (delta) => {
+        const v = Math.min(240, Math.max(5, (Number(minutes.value) || 0) + delta));
+        minutes.value = String(v);
+        syncSave();
+      };
+      const stepper = h('div', { class: 'num-stepper' },
+        h('button', { type: 'button', class: 'step', 'aria-label': 'Меньше на 5 минут', onclick: () => stepBy(-5) }, '−'),
+        minutes,
+        h('button', { type: 'button', class: 'step', 'aria-label': 'Больше на 5 минут', onclick: () => stepBy(5) }, '+'));
       const reason = h('input', { id: 'bonus-reason', maxlength: '80', placeholder: 'напр. помог по дому' });
       const err = h('p', { class: 'form-error', role: 'alert' });
-      const save = h('button', { class: 'btn primary', type: 'submit' }, 'Сохранить');
+      const save = h('button', { class: 'btn primary', type: 'submit' }, '');
+      const syncSave = () => {
+        const m = Number(minutes.value) || 0;
+        save.textContent = sign > 0 ? `Добавить ${m} мин` : `Забрать ${m} мин`;
+        save.classList.toggle('danger', sign < 0);
+        save.classList.toggle('primary', sign > 0);
+      };
+      minutes.addEventListener('input', syncSave);
+      syncSave();
       return h('form', {
         onsubmit: async (e) => {
           e.preventDefault();
-          const m = Number(minutes.value);
-          if (!Number.isInteger(m) || m === 0 || Math.abs(m) > 240) { err.textContent = 'От −240 до 240, не ноль'; return; }
+          const abs = Number(minutes.value);
+          if (!Number.isInteger(abs) || abs <= 0 || abs > 240) { err.textContent = 'От 1 до 240 минут'; return; }
+          const m = sign * abs;
           await busy(save, async () => {
             await api.addBonus(c.id, today, m, reason.value.trim());
             close(m);
           });
         },
       },
-        h('label', { for: 'bonus-min' }, 'Минуты (минус — забрать время)'), minutes,
+        modes,
+        h('label', { for: 'bonus-min' }, 'Минуты'), stepper,
         h('label', { for: 'bonus-reason' }, 'Причина (необязательно)'), reason,
         err,
         h('div', { class: 'actions' }, h('span', { class: 'grow' }), save));

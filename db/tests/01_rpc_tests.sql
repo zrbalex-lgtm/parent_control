@@ -474,5 +474,19 @@ set role anon;
 select pg_temp.check(not (device_update_policy(:'dev1', :'sec1b')->>'auto_update')::boolean, 'auto update can be switched off');
 reset role;
 
+-- ---------------------------------------------------------------------
+-- Reviewed accounts (012)
+-- ---------------------------------------------------------------------
+set role anon;
+select device_sync(:'dev1', :'sec1b', '1.3.1', now(), current_date, pg_temp.hb('S-1-5-21-newkid', 'newkid', 1, 0)) as r \gset
+reset role;
+select pg_temp.check((select unbound_account from v_device_flags where device_id = :'dev1'), 'new account is flagged');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+update parent_control.device_accounts set child_id = null where windows_sid = 'S-1-5-21-newkid';
+select pg_temp.check(not (select unbound_account from parent_control.v_device_flags where device_id = :'dev1'),
+                     '"no limits" chosen by admin clears the flag');
+reset request.jwt.claim.sub;
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

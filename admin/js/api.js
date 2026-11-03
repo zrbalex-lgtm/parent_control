@@ -109,7 +109,7 @@ export const api = {
       sb.from('devices').select(DEVICE_COLUMNS).order('name').then(unwrap),
       sb.from('v_device_flags').select('*').then(unwrap),
       sb.from('device_accounts')
-        .select('id,device_id,windows_sid,windows_user,child_id,last_seen_at')
+        .select('id,device_id,windows_sid,windows_user,child_id,last_seen_at,reviewed_at')
         .order('windows_user').then(unwrap),
     ]);
     const flagsById = new Map(flags.map((f) => [f.device_id, f]));

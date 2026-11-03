@@ -90,9 +90,11 @@ export async function render({ api }) {
           await refresh();
         }),
       },
-        h('option', { value: '', selected: !a.child_id }, 'Не ограничивать'),
+        // A new account nobody has decided on yet: force an explicit choice, even "no limits".
+        !a.child_id && !a.reviewed_at ? h('option', { value: '__new', selected: true, disabled: true }, 'Новая учётка — выбери') : null,
+        h('option', { value: '', selected: !a.child_id && !!a.reviewed_at }, 'Не ограничивать'),
         children.map((c) => h('option', { value: c.id, selected: a.child_id === c.id }, c.name)));
-      return h('li', { class: `account${a.child_id ? '' : ' unbound'}` },
+      return h('li', { class: `account${!a.child_id && !a.reviewed_at ? ' unbound' : ''}` },
         h('label', { for: id, class: 'account-name' },
           h('span', { class: 'strong' }, a.windows_user),
           h('span', { class: 'muted small' }, `вход: ${fmtAgo(a.last_seen_at)}`)),

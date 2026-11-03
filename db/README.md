@@ -16,11 +16,12 @@ Supabase project (one schema per home project; Auth is shared).
 | `migrations/009_reports.sql` | `admin_history`, `admin_ungrouped`, `admin_preview_app_rule` (History tab, app groups) |
 | `migrations/010_telegram.sql` | Telegram bot: linked chats, request notifications (pg_net → Edge Function `telegram-bot`), `tg_*` functions |
 | `migrations/011_auto_update.sql` | `devices.auto_update`, `device_update_policy` |
+| `migrations/012_account_review.sql` | `device_accounts.reviewed_at`: "unbound" flag only for accounts nobody has decided on |
 | `tests/` | Local test run against plain PostgreSQL (with a Supabase stub) |
 
 ## Applying to Supabase
 
-1. Run the migrations in order: `001` … `011`.
+1. Run the migrations in order: `001` … `012`.
 2. Settings → API (Data API) → **Exposed schemas**: add `parent_control`.
 3. Auth → Providers → Email: **disable sign-ups** (shared by all home projects).
 4. Create the parent user (Auth → Users → Add user), then:
