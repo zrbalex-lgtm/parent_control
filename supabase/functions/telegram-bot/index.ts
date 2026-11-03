@@ -234,6 +234,29 @@ async function onCallback(q: any) {
   }
 }
 
+// ---------------- tamper notifications ----------------
+
+async function tamperText(id: number): Promise<string | null> {
+  const { data: e } = await sb.from("tamper_events")
+    .select("type,details,windows_user,machine_name,device_id").eq("id", id).maybeSingle();
+  if (!e) return null;
+  let device = e.machine_name ?? "";
+  if (e.device_id) {
+    const { data: d } = await sb.from("devices").select("name").eq("id", e.device_id).maybeSingle();
+    if (d?.name) device = d.name;
+  }
+  if (e.type === "login_blocked") {
+    const until = e.details?.until ? time(e.details.until) : "?";
+    return [
+      `🚪 <b>${esc(e.details?.user ?? e.windows_user)}</b>: вход в Windows закрыт до <b>${until}</b>`,
+      `${esc(e.details?.attempts ?? "10")} раз подряд входил в заблокированное время.`,
+      `<i>${esc(device)}</i>`,
+      "Запрет снимется сам. Раньше: добавь время в админке (если кончился лимит) или на ПК от администратора запусти reset-logon.cmd.",
+    ].join("\n");
+  }
+  return null;
+}
+
 // ---------------- internal events from the database ----------------
 
 // deno-lint-ignore no-explicit-any
@@ -248,6 +271,14 @@ async function onInternal(body: any) {
     case "decided":
       await refreshRequestMessages(body.request_id);
       return { ok: true };
+    case "tamper": {
+      // request_id carries the tamper event id here
+      const text = await tamperText(body.request_id);
+      if (!text) return { ok: true };
+      const { data: chats } = await sb.from("tg_chats").select("chat_id");
+      for (const c of chats ?? []) await sendText(c.chat_id, text);
+      return { ok: true };
+    }
     case "setup": {
       const cfg = await config();
       const webhook = await tg("setWebhook", {

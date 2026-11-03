@@ -95,6 +95,12 @@ jobs:
           if ((Get-Service ParentControlGuard).Status -ne 'Running') { throw 'service not running after update.ps1' }
           Write-Host 'self-update script ok'
 
+          & "$dir\ParentControl.Guard.exe" unblock-logon
+          if ($LASTEXITCODE) { throw "unblock-logon failed: $LASTEXITCODE" }
+          & .\publish\guard\reset-logon.ps1 -NoPause
+          if ($LASTEXITCODE) { throw "reset-logon failed: $LASTEXITCODE" }
+          Write-Host 'logon reset ok'
+
           & "$dir\uninstall.ps1" -NoPause -RemoveData -InstallDir $dir
           if ($LASTEXITCODE) { throw "uninstall failed: $LASTEXITCODE" }
           if (Get-Service ParentControlGuard -ErrorAction SilentlyContinue) {

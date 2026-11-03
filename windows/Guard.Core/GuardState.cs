@@ -42,6 +42,9 @@ public sealed class GuardState
     public string? FailedUpdateVersion { get; set; }
     public DateTimeOffset? FailedUpdateAt { get; set; }
 
+    /// <summary>Child accounts whose Windows sign-in is denied for a while (re-login abuse).</summary>
+    public List<LogonBlock> LogonBlocks { get; set; } = [];
+
     /// <summary>Windows time zone seen last; a change is reported.</summary>
     public string? TimeZone { get; set; }
 

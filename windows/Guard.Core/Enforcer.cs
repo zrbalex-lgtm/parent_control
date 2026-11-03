@@ -31,6 +31,14 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
 
     private readonly Dictionary<Guid, DateTimeOffset> _lastDisconnect = [];
 
+    /// <summary>This many lock disconnects of one child within <see cref="AbuseWindow"/> = deliberate re-login.</summary>
+    public const int AbuseThreshold = 10;
+    public static readonly TimeSpan AbuseWindow = TimeSpan.FromHours(1);
+    private readonly Dictionary<Guid, List<DateTimeOffset>> _disconnects = [];
+
+    /// <summary>Raised once when a child reaches <see cref="AbuseThreshold"/> lock disconnects: (sample, decision, count).</summary>
+    public event Action<SessionSample, Decision, int>? RepeatedRelogin;
+
     private uint? _pendingSession;
     private DateTimeOffset _disconnectAt;
     private readonly HashSet<string> _warned = [];
@@ -57,7 +65,11 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
             }
             else if (now >= _disconnectAt)
             {
-                if (decision.ChildId is { } child) _lastDisconnect[child] = now;
+                if (decision.ChildId is { } child)
+                {
+                    _lastDisconnect[child] = now;
+                    CountDisconnect(child, sample, decision, now);
+                }
                 var ok = control.Disconnect(session);
                 log.LogInformation("Disconnected session {Session} of {Child} ({Reason}): {Result}",
                     session, decision.ChildName, reason, ok ? "ok" : "FAILED");
@@ -68,6 +80,17 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
 
         _pendingSession = null;
         Warn(session, decision);
+    }
+
+    private void CountDisconnect(Guid child, SessionSample sample, Decision decision, DateTimeOffset now)
+    {
+        if (!_disconnects.TryGetValue(child, out var list)) _disconnects[child] = list = [];
+        list.RemoveAll(t => now - t > AbuseWindow);
+        list.Add(now);
+        if (list.Count < AbuseThreshold) return;
+        list.Clear(); // count again from zero after acting
+        log.LogWarning("{Child}: {Count} lock disconnects within {Window} min", decision.ChildName, AbuseThreshold, AbuseWindow.TotalMinutes);
+        RepeatedRelogin?.Invoke(sample, decision, AbuseThreshold);
     }
 
     public TimeSpan GraceFor(Guid? child, DateTimeOffset now) =>

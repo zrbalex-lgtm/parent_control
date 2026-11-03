@@ -24,6 +24,7 @@ namespace ParentControl.Service
               ParentControl.Guard.exe status          show registration, sync and today's usage
               ParentControl.Guard.exe probe           print what the guard sees on the console session
               ParentControl.Guard.exe clear-tamper    lift the lock after tampering on this PC (also works offline)
+              ParentControl.Guard.exe unblock-logon   let children sign in again (after repeated re-logins were blocked)
               ParentControl.Guard.exe harden          apply folder/registry/service protection (installer runs it)
               ParentControl.Guard.exe watchdog        start the service if it was stopped (scheduled task)
               ParentControl.Guard.exe tray            tray app for the signed-in user (started by the service)
@@ -68,6 +69,7 @@ namespace ParentControl.Service
                 "status" => Status(options, data),
                 "probe" => Probe(),
                 "clear-tamper" => ClearTamper(data),
+                "unblock-logon" => UnblockLogon(data),
                 "harden" => Harden(data),
                 "watchdog" => Watchdog(data),
                 _ => Fail($"Unknown command '{command}'.\n\n{Usage}"),
@@ -143,6 +145,7 @@ namespace ParentControl.Service
             builder.Services.AddSingleton<ISessionControl>(sp => sp.GetRequiredService<WindowsSessionControl>());
             builder.Services.AddSingleton<Enforcer>();
             builder.Services.AddSingleton<Updater>();
+            builder.Services.AddSingleton<LogonBlocker>();
             builder.Services.AddHostedService<GuardWorker>();
 
             await builder.Build().RunAsync();
@@ -257,6 +260,14 @@ namespace ParentControl.Service
         {
             File.WriteAllText(data.ClearTamperFlag, Environment.UserName);
             Console.WriteLine("Requested. The service lifts the tamper lock within a few seconds and tells the admin app.");
+            return 0;
+        }
+
+        // ---------------- unblock-logon ----------------
+        private static int UnblockLogon(DataDirectory data)
+        {
+            File.WriteAllText(data.UnblockLogonFlag, Environment.UserName);
+            Console.WriteLine("Requested. The service restores sign-in for the children within a few seconds.");
             return 0;
         }
 

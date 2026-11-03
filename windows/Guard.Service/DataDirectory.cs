@@ -22,6 +22,8 @@ public sealed class DataDirectory
     /// <summary>Dropped by the clear-tamper command; picked up by the running service.</summary>
     /// <summary>Events written by the watchdog task; the service uploads and deletes them.</summary>
     public string Inbox => Path.Combine(Root, "inbox.jsonl");
+    /// <summary>Dropped by "unblock-logon" or reset-logon.cmd: restore sign-in for all children.</summary>
+    public string UnblockLogonFlag => Path.Combine(Root, "unblock-logon.flag");
     public string ClearTamperFlag => Path.Combine(Root, "clear-tamper.flag");
 
     public static bool IsElevated()

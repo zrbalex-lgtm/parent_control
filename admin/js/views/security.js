@@ -40,6 +40,10 @@ export function describeEvent(e) {
       return 'Переведены часы';
     case 'tray_unresponsive':
       return 'Значок в трее закрыт больше 5 минут';
+    case 'login_blocked': {
+      const until = d.until ? new Date(d.until).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '?';
+      return `${d.user || 'Ребёнок'} ${d.attempts || 10} раз входил в заблокированное время — вход в Windows закрыт до ${until}`;
+    }
     case 'update_failed':
       return `Не удалось обновить программу до ${d.version || 'новой версии'} — осталась ${d.running || 'прежняя'}`;
     case 'tamper_cleared_locally':

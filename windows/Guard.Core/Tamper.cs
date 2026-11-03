@@ -18,6 +18,7 @@ public static class TamperTypes
     public const string TrayUnresponsive = "tray_unresponsive";
     public const string TamperClearedLocally = "tamper_cleared_locally";
     public const string UpdateFailed = "update_failed";
+    public const string LoginBlocked = "login_blocked";
 
     private static readonly HashSet<string> LockTypes =
     [

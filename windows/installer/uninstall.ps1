@@ -63,6 +63,12 @@ try {
         Remove-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\SafeBoot\$mode\$ServiceName" -Recurse -Force -ErrorAction SilentlyContinue
     }
 
+    $reset = Join-Path $PSScriptRoot 'reset-logon.ps1'
+    if (Test-Path $reset) {
+        Write-Step 'Разрешаю вход во все учётки в любое время'
+        & $reset -NoPause | Out-Null
+    }
+
     Write-Step 'Убираю автозапуск трея'
     Remove-ItemProperty -Path $RunKey -Name $RunValue -ErrorAction SilentlyContinue
 

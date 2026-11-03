@@ -17,6 +17,7 @@ public sealed class GuardWorker(
     TrayLauncher launcher,
     WindowsSessionControl control,
     Updater updater,
+    LogonBlocker logonBlocker,
     DataDirectory data,
     TimeProvider time,
     ILogger<GuardWorker> log) : BackgroundService
@@ -56,6 +57,7 @@ public sealed class GuardWorker(
     {
         log.LogInformation("Guard {Version} started. Data: {Dir}. Queue: {Queue}. Registered: {Registered}. Tamper lock: {Tamper}",
             Program.Version, data.Root, engine.QueueLength, engine.HasCredentials, engine.State.TamperLocked);
+        enforcer.RepeatedRelogin += logonBlocker.Block;
         if (engine.ConfigLost) log.LogWarning("Registration is lost: only accounts known as children are blocked until the PC is registered again");
 
         while (!ct.IsCancellationRequested)
@@ -116,6 +118,7 @@ public sealed class GuardWorker(
         var decision = policy.Evaluate(sample.Sid);
         enforcer.Apply(sample, decision);
         updater.Tick(childActive: decision.Restricted && HeartbeatStates.IsCounted(sample.State));
+        logonBlocker.Tick();
 
         if (sample.SessionId is { } session && HeartbeatStates.IsCounted(sample.State))
         {

@@ -144,6 +144,11 @@ try {
     & $exe harden
     if ($LASTEXITCODE -ne 0) { throw "Не удалось включить защиту (код $LASTEXITCODE)" }
 
+    # ---------------------------------------------------------------- logon hours
+    # Undo any re-login block; the service puts back blocks that are still running.
+    $reset = Join-Path $dst 'reset-logon.ps1'
+    if (Test-Path $reset) { & $reset -NoPause -KeepGuardBlocks | Out-Null }
+
     # ---------------------------------------------------------------- start
     if (-not $NoStart) {
         Write-Step 'Запускаю службу'
