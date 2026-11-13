@@ -31,6 +31,9 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
 
     private readonly Dictionary<Guid, DateTimeOffset> _lastDisconnect = [];
 
+    /// <summary>When a child was last sent to the sign-in screen for a lock (any child).</summary>
+    public DateTimeOffset? LastDisconnectAt { get; private set; }
+
     /// <summary>This many lock disconnects of one child within <see cref="AbuseWindow"/> = deliberate re-login.</summary>
     public const int AbuseThreshold = 10;
     public static readonly TimeSpan AbuseWindow = TimeSpan.FromHours(1);
@@ -68,6 +71,7 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
                 if (decision.ChildId is { } child)
                 {
                     _lastDisconnect[child] = now;
+                    LastDisconnectAt = now;
                     CountDisconnect(child, sample, decision, now);
                 }
                 var ok = control.Disconnect(session);

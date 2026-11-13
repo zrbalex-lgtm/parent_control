@@ -33,8 +33,6 @@ public sealed class GuardWorker(
     private int _notRegisteredTicks;
     private bool _syncNow;
     private DateTimeOffset _lastSyncAt = DateTimeOffset.MinValue;
-    private static readonly TimeSpan AnswerPollEvery = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan AnswerPollFor = TimeSpan.FromMinutes(15);
 
     // per console session
     private uint? _session;
@@ -102,9 +100,13 @@ public sealed class GuardWorker(
             Harden(sample);
         }
 
-        // Normally once a minute; every check while a child waits for an answer, so it arrives in seconds.
-        var waiting = engine.AwaitingDecision(AnswerPollFor) && now - _lastSyncAt >= AnswerPollEvery;
-        if (engine.RecordMinute(sample) is not null || _syncNow || waiting)
+        // Normally once a minute; more often while a child is around, so adult changes arrive in seconds.
+        var extra = SyncPacing.ShouldSync(now, _lastSyncAt,
+            online: engine.HasCredentials && engine.State.LastSyncError is null,
+            awaitingAnswer: engine.AwaitingDecision(SyncPacing.AnswerFor),
+            childPresent: engine.ChildOf(sample.Sid) is not null,
+            lastDisconnectAt: enforcer.LastDisconnectAt);
+        if (engine.RecordMinute(sample) is not null || _syncNow || extra)
         {
             _syncNow = false;
             _lastSyncAt = now;
