@@ -298,24 +298,61 @@ internal abstract class OverlayForm : Form
     }
 }
 
-/// <summary>Last minute: "save your game".</summary>
-internal sealed class FinalWarningForm : OverlayForm
+/// <summary>
+/// Last minute: "save your game". A small banner at the top that never takes focus:
+/// stealing focus from a full-screen game (Minecraft) can make it crash.
+/// </summary>
+internal sealed class FinalWarningForm : Form
 {
+    private const int WS_EX_TOPMOST = 0x00000008;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
+
     public FinalWarningForm()
     {
-        Body.Controls.Add(Theme.MakeLabel("Осталась 1 минута", 40, Theme.Warn, FontStyle.Bold));
-        Body.Controls.Add(Theme.MakeLabel("Сохрани игру и закончи то, что делаешь.", 20, Theme.Text));
-        var ok = Theme.MakeButton("Понятно", primary: true);
-        ok.Font = Theme.UiFont(14, FontStyle.Bold);
-        ok.Margin = new Padding(0, 24, 0, 0);
-        ok.Click += (_, _) => Close();
-        Body.Controls.Add(ok);
-        AcceptButton = ok;
+        FormBorderStyle = FormBorderStyle.None;
+        StartPosition = FormStartPosition.Manual;
+        ShowInTaskbar = false;
+        TopMost = true;
+        BackColor = Theme.Surface;
+        Padding = new Padding(24, 14, 24, 14);
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+
+        var body = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, BackColor = Color.Transparent,
+        };
+        body.Controls.Add(Theme.MakeLabel("Осталась 1 минута", 22, Theme.Warn, FontStyle.Bold));
+        body.Controls.Add(Theme.MakeLabel("Сохрани игру и закончи то, что делаешь.", 13, Theme.Text));
+        Controls.Add(body);
+        // A click anywhere hides it (it never takes keyboard focus).
+        foreach (Control c in body.Controls) c.Click += (_, _) => Close();
+        body.Click += (_, _) => Close();
 
         var timer = new System.Windows.Forms.Timer { Interval = 15000 };
         timer.Tick += (_, _) => { timer.Stop(); Close(); };
         timer.Start();
         FormClosed += (_, _) => timer.Dispose();
+    }
+
+    protected override bool ShowWithoutActivation => true;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.ExStyle |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+            return cp;
+        }
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1280, 720);
+        Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + 24);
     }
 }
 
@@ -400,4 +437,7 @@ internal sealed class NoticeForm : Form
         AcceptButton = ok;
         Controls.Add(body);
     }
+
+    // Shown on top but without taking focus, so a full-screen game keeps running.
+    protected override bool ShowWithoutActivation => true;
 }
