@@ -65,6 +65,15 @@ internal sealed class FakeApi : IGuardApi
     public Task<UpdatePolicy> UpdatePolicyAsync(DeviceCredentials creds, CancellationToken ct) =>
         Throw is not null ? Task.FromException<UpdatePolicy>(Throw) : Task.FromResult(new UpdatePolicy(AutoUpdate));
 
+    public List<string> Uploads { get; } = [];
+
+    public Task UploadLogsAsync(DeviceCredentials creds, string content, CancellationToken ct)
+    {
+        if (Throw is not null) throw Throw;
+        Uploads.Add(content);
+        return Task.CompletedTask;
+    }
+
     public Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct)
     {
         if (Throw is not null) throw Throw;

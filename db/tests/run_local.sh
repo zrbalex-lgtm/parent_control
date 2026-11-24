@@ -26,4 +26,5 @@ run migrations/012_account_review.sql
 run migrations/013_tamper_notify.sql
 run migrations/014_child_admins.sql
 run migrations/015_app_names.sql
+run migrations/016_device_logs.sql
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -f tests/01_rpc_tests.sql 2>&1 >/dev/null | sed 's/^psql:[^ ]* NOTICE:  //'

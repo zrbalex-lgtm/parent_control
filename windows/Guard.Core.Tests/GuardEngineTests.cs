@@ -37,6 +37,18 @@ public class GuardEngineTests : IDisposable
     };
 
     [Fact]
+    public async Task Log_request_is_answered_once()
+    {
+        var engine = NewEngine();
+        _api.Respond = _ => ServerSays(0) with { SendLogs = true };
+        await engine.SyncAsync(default);
+        Assert.True(engine.LogsRequested);
+        Assert.True(await engine.UploadLogsAsync("log", default));
+        Assert.Equal(new[] { "log" }, _api.Uploads);
+        Assert.False(engine.LogsRequested);
+    }
+
+    [Fact]
     public void Records_one_heartbeat_per_minute_with_local_date()
     {
         var e = NewEngine();

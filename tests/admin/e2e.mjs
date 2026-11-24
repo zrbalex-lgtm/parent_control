@@ -128,6 +128,24 @@ await page.getByText('Автообновление выключено', { exact:
 if ((await store()).devices[0].auto_update !== false) fail('auto update switched off');
 step('auto update toggle');
 
+// remote log: request, PC answers, open it
+await page.getByLabel('Действия: Комп в детской').click();
+await page.getByRole('button', { name: 'Прислать журнал' }).click();
+await page.getByText(/Журнал: ждём ПК/).waitFor();
+if (!(await store()).devices[0].logs_requested_at) fail('log requested');
+await page.evaluate(() => {
+  const s = window.__store;
+  s.devices[0].logs_requested_at = null;
+  s.device_logs.push({ id: 7, device_id: s.devices[0].id, uploaded_at: new Date().toISOString(), size_bytes: 2048,
+    content: '===== guard-20261122.log =====\n22:07:28 WRN LogonBlocker: Sign-in of nicya denied' });
+});
+await page.getByText(/Журнал от .* · 2 КБ/).waitFor({ timeout: 15000 });
+await page.getByRole('button', { name: 'Открыть' }).click();
+await page.getByRole('dialog').getByText(/Sign-in of nicya denied/).waitFor();
+await page.screenshot({ path: `${shots}/05b-device-log.png`, fullPage: true });
+await page.getByRole('dialog').getByRole('button', { name: 'Готово' }).click();
+step('remote log request + view');
+
 // ---------- security ----------
 await page.getByText('Заблокирован после вмешательства').first().waitFor();
 await page.getByText('Конфиг восстановлен').waitFor();

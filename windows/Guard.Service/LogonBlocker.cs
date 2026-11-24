@@ -52,6 +52,14 @@ public sealed class LogonBlocker(
         }, user);
     }
 
+    /// <summary>Until when sign-in of this account is denied by an active block; null if it is not.</summary>
+    public DateTimeOffset? BlockedUntil(string? sid)
+    {
+        if (sid is null) return null;
+        var now = time.GetUtcNow();
+        return engine.State.LogonBlocks.FirstOrDefault(b => b.Sid == sid && b.Until > now)?.Until;
+    }
+
     /// <summary>Every loop: restore sign-in when the block is over or access is open again.</summary>
     public void Tick()
     {

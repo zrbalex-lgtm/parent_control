@@ -11,6 +11,8 @@ public interface IGuardApi
     Task<RegisterResult> RegisterAsync(string code, string machineName, string clientVersion, CancellationToken ct);
     Task<ReportResult> ReportAsync(DeviceCredentials creds, IReadOnlyList<TamperEvent> events, CancellationToken ct);
     Task<UpdatePolicy> UpdatePolicyAsync(DeviceCredentials creds, CancellationToken ct);
+    /// <summary>Uploads the log text an adult asked for.</summary>
+    Task UploadLogsAsync(DeviceCredentials creds, string content, CancellationToken ct);
     /// <summary>Unauthenticated "my configuration is gone" signal.</summary>
     Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct);
 }
@@ -67,6 +69,16 @@ public sealed class SupabaseApi : IGuardApi
             ["p_device_id"] = creds.DeviceId,
             ["p_secret"] = creds.Secret,
         }, ct);
+
+    public async Task UploadLogsAsync(DeviceCredentials creds, string content, CancellationToken ct)
+    {
+        await PostRpcRawAsync("device_upload_logs", new Dictionary<string, object>
+        {
+            ["p_device_id"] = creds.DeviceId,
+            ["p_secret"] = creds.Secret,
+            ["p_content"] = content,
+        }, ct);
+    }
 
     public async Task BeaconAsync(string machineName, string reason, Guid? deviceId, CancellationToken ct)
     {

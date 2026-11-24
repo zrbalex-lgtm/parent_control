@@ -567,5 +567,37 @@ select pg_temp.check(admin_app_titles('11111111-1111-1111-1111-111111111111', cu
                      'titles behind an app');
 reset request.jwt.claim.sub;
 
+-- ---------------------------------------------------------------------
+-- Remote logs (016)
+-- ---------------------------------------------------------------------
+reset role;
+set role anon;
+select pg_temp.check(not (device_sync(:'dev1', :'sec1b', '1.5.0', now(), current_date, '[]')->>'send_logs')::boolean, 'no log request by default');
+select pg_temp.check(device_sync(:'dev1', :'sec1b', '1.5.0', now(), current_date, '[]') ? 'children', 'sync answer still complete');
+select pg_temp.expect_error(format($$select parent_control.device_sync_core(%L, %L, 'x', now(), current_date)$$, :'dev1', :'sec1b'), '42501', 'core not callable by PCs');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+update parent_control.devices set logs_requested_at = now() where id = :'dev1';
+reset request.jwt.claim.sub;
+reset role;
+set role anon;
+select pg_temp.check((device_sync(:'dev1', :'sec1b', '1.5.0', now(), current_date, '[]')->>'send_logs')::boolean, 'PC told to send logs');
+select pg_temp.expect_error(format($$select parent_control.device_upload_logs(%L, 'bad', 'x')$$, :'dev1'), '28000', 'upload needs the secret');
+select device_upload_logs(:'dev1', :'sec1b', 'line 1' || chr(10) || 'line 2');
+select device_upload_logs(:'dev1', :'sec1b', 'b');
+select device_upload_logs(:'dev1', :'sec1b', 'c');
+select device_upload_logs(:'dev1', :'sec1b', 'd');
+select pg_temp.check(not (device_sync(:'dev1', :'sec1b', '1.5.0', now(), current_date, '[]')->>'send_logs')::boolean, 'request cleared by upload');
+select pg_temp.expect_error($$select count(*) from parent_control.device_logs$$, '42501', 'PCs cannot read logs');
+reset role;
+select pg_temp.check((select count(*) from device_logs where device_id = :'dev1') = 3, 'last 3 uploads kept');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+select pg_temp.check((select count(*) from parent_control.device_logs) = 3, 'adult reads logs of own PC');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.check((select count(*) from parent_control.device_logs) = 0, 'other adult does not');
+reset request.jwt.claim.sub;
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

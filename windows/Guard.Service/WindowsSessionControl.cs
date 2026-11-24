@@ -22,9 +22,10 @@ public sealed class WindowsSessionControl(TrayHub hub, GuardEngine engine, ILogg
         ShowMessageBox(sessionId, Texts.Warn(minutesLeft), 30);
     }
 
-    public void ShowLock(uint sessionId, LockReason reason, Decision decision, TimeSpan grace)
+    public void ShowLock(uint sessionId, LockReason reason, Decision decision, TimeSpan grace, DateTimeOffset? signInBlockedUntil = null)
     {
         var text = Texts.Lock(reason, decision.WindowFrom, decision.WindowTo);
+        if (signInBlockedUntil is { } until) text += "\n" + Texts.SignOut(TimeZoneInfo.ConvertTime(until, TimeZoneInfo.Local));
         var canRequest = LockReasons.AllowsRequest(reason) && decision.ChildId is { } child && engine.OpenRequestFor(child) is null;
         var sent = hub.Send(sessionId, new IpcMessage
         {
@@ -44,6 +45,13 @@ public sealed class WindowsSessionControl(TrayHub hub, GuardEngine engine, ILogg
         return ok;
     }
 
+    public bool LogOff(uint sessionId)
+    {
+        var ok = WTSLogoffSession(IntPtr.Zero, sessionId, false);
+        if (!ok) log.LogError("WTSLogoffSession({Session}) failed: {Error}", sessionId, Marshal.GetLastPInvokeError());
+        return ok;
+    }
+
     /// <summary>System message box in the session; returns immediately, closes itself after the timeout.</summary>
     public void ShowMessageBox(uint sessionId, string text, int timeoutSeconds)
     {
@@ -57,6 +65,9 @@ public sealed class WindowsSessionControl(TrayHub hub, GuardEngine engine, ILogg
 
     [DllImport("wtsapi32.dll", SetLastError = true)]
     private static extern bool WTSDisconnectSession(IntPtr hServer, uint sessionId, bool bWait);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    private static extern bool WTSLogoffSession(IntPtr hServer, uint sessionId, bool bWait);
 
     [DllImport("wtsapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool WTSSendMessageW(

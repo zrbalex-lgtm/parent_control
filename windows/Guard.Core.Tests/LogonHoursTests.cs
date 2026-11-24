@@ -102,7 +102,8 @@ public class LogonHoursTests
     private sealed class NullControl : ISessionControl
     {
         public void Warn(uint sessionId, int minutesLeft) { }
-        public void ShowLock(uint sessionId, LockReason reason, Decision decision, TimeSpan grace) { }
+        public void ShowLock(uint sessionId, LockReason reason, Decision decision, TimeSpan grace, DateTimeOffset? signInBlockedUntil = null) { }
         public bool Disconnect(uint sessionId) => true;
+        public bool LogOff(uint sessionId) => true;
     }
 }

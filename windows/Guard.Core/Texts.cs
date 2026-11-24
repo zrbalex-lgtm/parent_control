@@ -15,6 +15,10 @@ public static class Texts
         _ => "Компьютер заблокирован.",
     };
 
+    /// <summary>Added to the lock text when the session is about to be signed out.</summary>
+    public static string SignOut(DateTimeOffset untilLocal) =>
+        $"Вход в Windows закрыт до {untilLocal:HH:mm}.\nСеанс будет завершён, несохранённое пропадёт.";
+
     /// <summary>Short status line for the tray window.</summary>
     public static string LockShort(string? reason) => reason switch
     {

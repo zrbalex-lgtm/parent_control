@@ -256,6 +256,27 @@ public sealed class GuardEngine
         }
     }
 
+    /// <summary>The last server answer asked for the log.</summary>
+    public bool LogsRequested => _creds is not null && State.LastSync?.SendLogs == true;
+
+    /// <summary>Sends the log text; on success the request is considered done until the server asks again.</summary>
+    public async Task<bool> UploadLogsAsync(string content, CancellationToken ct)
+    {
+        if (_creds is null) return false;
+        try
+        {
+            await _api.UploadLogsAsync(_creds, content, ct);
+            if (State.LastSync is { } last) State.LastSync = last with { SendLogs = false };
+            _log.LogInformation("Uploaded log ({Size} chars)", content.Length);
+            return true;
+        }
+        catch (Exception ex) when (ex is ApiException or DeviceUnauthorizedException)
+        {
+            _log.LogWarning("Log upload failed: {Message}", ex.Message);
+            return false;
+        }
+    }
+
     public void NoteUpdateAttempt(string version)
     {
         State.UpdateAttemptVersion = version;

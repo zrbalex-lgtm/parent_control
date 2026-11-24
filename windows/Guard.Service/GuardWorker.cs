@@ -33,6 +33,7 @@ public sealed class GuardWorker(
     private int _notRegisteredTicks;
     private bool _syncNow;
     private DateTimeOffset _lastSyncAt = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastLogUploadAt = DateTimeOffset.MinValue;
 
     // per console session
     private uint? _session;
@@ -56,6 +57,7 @@ public sealed class GuardWorker(
         log.LogInformation("Guard {Version} started. Data: {Dir}. Queue: {Queue}. Registered: {Registered}. Tamper lock: {Tamper}",
             Program.Version, data.Root, engine.QueueLength, engine.HasCredentials, engine.State.TamperLocked);
         enforcer.RepeatedRelogin += logonBlocker.Block;
+        enforcer.SignInBlockedUntil = logonBlocker.BlockedUntil;
         if (engine.ConfigLost) log.LogWarning("Registration is lost: only accounts known as children are blocked until the PC is registered again");
 
         while (!ct.IsCancellationRequested)
@@ -86,6 +88,35 @@ public sealed class GuardWorker(
         log.LogInformation("Guard stopping");
     }
 
+    /// <summary>The newest log files as one text (files are read while the logger may write to them).</summary>
+    private string ReadLogs()
+    {
+        try
+        {
+            var picked = LogBundle.Pick(Directory.GetFiles(data.Logs));
+            var files = new List<(string, string)>();
+            foreach (var name in picked)
+            {
+                try
+                {
+                    using var fs = new FileStream(Path.Combine(data.Logs, name), FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete);
+                    using var reader = new StreamReader(fs);
+                    files.Add((name, reader.ReadToEnd()));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    files.Add((name, $"(не прочитан: {ex.Message})"));
+                }
+            }
+            return LogBundle.Build(files);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"(папка журналов недоступна: {ex.Message})";
+        }
+    }
+
     private async Task CheckAsync(CancellationToken ct)
     {
         var now = time.GetUtcNow();
@@ -114,6 +145,11 @@ public sealed class GuardWorker(
             if (outcome == SyncOutcome.NotRegistered && _notRegisteredTicks++ % 60 == 0)
             {
                 log.LogWarning("Device is not registered; run: ParentControl.Guard.exe register <CODE>");
+            }
+            if (engine.LogsRequested && now - _lastLogUploadAt >= TimeSpan.FromMinutes(1))
+            {
+                _lastLogUploadAt = now;
+                await engine.UploadLogsAsync(ReadLogs(), ct);
             }
         }
 

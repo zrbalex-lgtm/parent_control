@@ -8,11 +8,17 @@ public interface ISessionControl
     /// <summary>"N minutes left" warning; <paramref name="minutesLeft"/> ≤ 1 is the final one.</summary>
     void Warn(uint sessionId, int minutesLeft);
 
-    /// <summary>Explains the lock; the session is disconnected after <paramref name="grace"/>.</summary>
-    void ShowLock(uint sessionId, LockReason reason, Decision decision, TimeSpan grace);
+    /// <summary>
+    /// Explains the lock; the session is disconnected after <paramref name="grace"/>,
+    /// or signed out when <paramref name="signInBlockedUntil"/> is set.
+    /// </summary>
+    void ShowLock(uint sessionId, LockReason reason, Decision decision, TimeSpan grace, DateTimeOffset? signInBlockedUntil = null);
 
     /// <summary>Sends the session to the sign-in screen; programs keep running.</summary>
     bool Disconnect(uint sessionId);
+
+    /// <summary>Signs the session out (programs are closed), so coming back needs a new sign-in.</summary>
+    bool LogOff(uint sessionId);
 }
 
 /// <summary>
@@ -42,6 +48,12 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
     /// <summary>Raised once when a child reaches <see cref="AbuseThreshold"/> lock disconnects: (sample, decision, count).</summary>
     public event Action<SessionSample, Decision, int>? RepeatedRelogin;
 
+    /// <summary>
+    /// Until when Windows sign-in of an account (SID) is denied, if it is. A disconnected session can be
+    /// reconnected despite denied logon hours, so a blocked child is signed out instead of disconnected.
+    /// </summary>
+    public Func<string?, DateTimeOffset?>? SignInBlockedUntil { get; set; }
+
     private uint? _pendingSession;
     private DateTimeOffset _disconnectAt;
     private readonly HashSet<string> _warned = [];
@@ -60,8 +72,9 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
             var now = time.GetUtcNow();
             if (_pendingSession != session)
             {
-                var grace = GraceFor(decision.ChildId, now);
-                control.ShowLock(session, reason, decision, grace);
+                var blockedUntil = SignInBlockedUntil?.Invoke(sample.Sid);
+                var grace = blockedUntil is null ? GraceFor(decision.ChildId, now) : RepeatGrace;
+                control.ShowLock(session, reason, decision, grace, blockedUntil);
                 _pendingSession = session;
                 _disconnectAt = now + grace;
                 log.LogInformation("Locking {Child} ({Reason}) in {Grace}s", decision.ChildName, reason, grace.TotalSeconds);
@@ -74,9 +87,20 @@ public sealed class Enforcer(ISessionControl control, TimeProvider time, ILogger
                     LastDisconnectAt = now;
                     CountDisconnect(child, sample, decision, now);
                 }
-                var ok = control.Disconnect(session);
-                log.LogInformation("Disconnected session {Session} of {Child} ({Reason}): {Result}",
-                    session, decision.ChildName, reason, ok ? "ok" : "FAILED");
+                // Checked after counting: reaching the threshold may have just blocked sign-in.
+                if (SignInBlockedUntil?.Invoke(sample.Sid) is not null)
+                {
+                    var off = control.LogOff(session);
+                    log.LogInformation("Signed out session {Session} of {Child} ({Reason}, sign-in blocked): {Result}",
+                        session, decision.ChildName, reason, off ? "ok" : "FAILED");
+                    if (!off) control.Disconnect(session);
+                }
+                else
+                {
+                    var ok = control.Disconnect(session);
+                    log.LogInformation("Disconnected session {Session} of {Child} ({Reason}): {Result}",
+                        session, decision.ChildName, reason, ok ? "ok" : "FAILED");
+                }
                 _pendingSession = null;
             }
             return;

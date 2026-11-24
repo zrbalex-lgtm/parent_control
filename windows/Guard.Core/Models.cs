@@ -90,6 +90,8 @@ public sealed record SyncResponse
     public bool TamperLocked { get; init; }
     /// <summary>"lock" or "notify": what tamper events do; null from older servers.</summary>
     public string? TamperAction { get; init; }
+    /// <summary>An adult asked for this PC's log (since 016).</summary>
+    public bool SendLogs { get; init; }
 }
 
 public static class RequestStatuses

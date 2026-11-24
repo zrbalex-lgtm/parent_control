@@ -9,14 +9,18 @@ public class EnforcerTests
     {
         public List<string> Messages { get; } = [];
         public List<uint> Disconnects { get; } = [];
+        public List<uint> LogOffs { get; } = [];
+        public List<DateTimeOffset?> SignOutUntil { get; } = [];
         public void Warn(uint sessionId, int minutesLeft) => Messages.Add(Texts.Warn(minutesLeft));
         public List<TimeSpan> Graces { get; } = [];
-        public void ShowLock(uint sessionId, LockReason reason, Decision d, TimeSpan grace)
+        public void ShowLock(uint sessionId, LockReason reason, Decision d, TimeSpan grace, DateTimeOffset? signInBlockedUntil = null)
         {
             Graces.Add(grace);
+            SignOutUntil.Add(signInBlockedUntil);
             Messages.Add(Texts.Lock(reason, d.WindowFrom, d.WindowTo));
         }
         public bool Disconnect(uint sessionId) { Disconnects.Add(sessionId); return true; }
+        public bool LogOff(uint sessionId) { LogOffs.Add(sessionId); return true; }
     }
 
     private static readonly Guid Misha = Guid.NewGuid();
@@ -62,6 +66,33 @@ public class EnforcerTests
         _enf.Apply(Active(3), Locked());
         Assert.Equal(2, _ctl.Messages.Count);
         Assert.Equal(new uint[] { 2, 3 }, _ctl.Disconnects);
+    }
+
+    [Fact]
+    public void Blocked_sign_in_signs_the_session_out_instead_of_disconnecting()
+    {
+        DateTimeOffset? until = null;
+        _enf.SignInBlockedUntil = sid => sid == "S-1" ? until : null;
+        // The 10th disconnect blocks sign-in; that very session is signed out.
+        _enf.RepeatedRelogin += (_, _, _) => until = _time.GetUtcNow().AddHours(2);
+        for (var i = 0; i < Enforcer.AbuseThreshold; i++)
+        {
+            _enf.Apply(Active(), Locked());
+            _time.Advance(Enforcer.Grace);
+            _enf.Apply(Active(), Locked());
+            _enf.Apply(new SessionSample(HeartbeatStates.NoUser), Decision.Unrestricted);
+        }
+        Assert.Equal(Enforcer.AbuseThreshold - 1, _ctl.Disconnects.Count);
+        Assert.Equal(new uint[] { 2 }, _ctl.LogOffs);
+
+        // Coming back into a still-open session: short notice that says so, then sign-out again.
+        _enf.Apply(Active(), Locked());
+        Assert.Equal(until, _ctl.SignOutUntil[^1]);
+        Assert.Equal(Enforcer.RepeatGrace, _ctl.Graces[^1]);
+        _time.Advance(Enforcer.RepeatGrace);
+        _enf.Apply(Active(), Locked());
+        Assert.Equal(2, _ctl.LogOffs.Count);
+        Assert.Equal(Enforcer.AbuseThreshold - 1, _ctl.Disconnects.Count);
     }
 
     [Fact]
