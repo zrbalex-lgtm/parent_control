@@ -180,6 +180,24 @@ export const api = {
     if (!lockIds.length) return;
     unwrap(await sb.from('commands').update({ cancelled_at: new Date().toISOString() }).in('id', lockIds));
   },
+  // ---------------- app blocks ----------------
+  /** Blocks still in force; empty on servers without app_blocks (before 017). */
+  async listAppBlocks() {
+    try {
+      return unwrap(await sb.from('app_blocks').select('id,child_id,group_name,until')
+        .is('cancelled_at', null).gte('until', new Date().toISOString()).order('until'));
+    } catch {
+      return [];
+    }
+  },
+  async blockApp(childId, groupName, until) {
+    unwrap(await sb.from('app_blocks').insert({ child_id: childId, group_name: groupName, until: until.toISOString() }));
+  },
+  async cancelAppBlocks(ids) {
+    if (!ids.length) return;
+    unwrap(await sb.from('app_blocks').update({ cancelled_at: new Date().toISOString() }).in('id', ids));
+  },
+
   async sendMessage(childId, text) {
     unwrap(await sb.from('commands').insert({ child_id: childId, kind: 'message', message: text }));
   },

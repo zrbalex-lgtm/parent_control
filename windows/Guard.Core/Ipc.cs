@@ -38,6 +38,8 @@ public static class IpcTypes
     public const string Activity = "activity";
     public const string RequestTime = "request_time";
     public const string AckNotice = "ack_notice";
+    /// <summary>The tray closed a window of a blocked group (for the log).</summary>
+    public const string AppBlocked = "app_blocked";
 
     // service -> tray
     public const string Status = "status";
@@ -81,6 +83,9 @@ public sealed record IpcMessage
 
     // notice / ack_notice: "message:<id>" or "request:<id>" or "info"
     public string? NoticeId { get; init; }
+
+    // app_blocked: group name (Text), what was done (Kind: "tab" / "app" / "minimize")
+    public string? Group { get; init; }
 }
 
 /// <summary>Snapshot shown in the tray icon and status window.</summary>
@@ -102,4 +107,6 @@ public sealed record TrayStatus
     public int? RequestMinutes { get; init; }
     public string? RequestKind { get; init; }
     public bool RequestUploaded { get; init; }
+    /// <summary>Blocked app groups: the tray closes their windows (browser: the tab).</summary>
+    public List<TrayBlock>? Blocks { get; init; }
 }

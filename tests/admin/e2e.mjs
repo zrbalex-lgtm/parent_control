@@ -280,8 +280,8 @@ await page.getByRole('dialog').getByRole('button', { name: 'Забрать 10 м
 await page.getByText('Миша: -10 мин').waitFor();
 await mishaCard.getByText('(бонус +35)').waitFor();
 
-await mishaCard.getByRole('button', { name: 'Заблокировать' }).click();
-await page.getByRole('dialog').getByRole('button', { name: 'Заблокировать' }).click();
+await mishaCard.getByRole('button', { name: 'Заблокировать', exact: true }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Заблокировать', exact: true }).click();
 await page.getByText('Миша: заблокирован до конца дня').waitFor();
 await mishaCard.getByText('Заблокирован до 00:00').waitFor();
 await page.screenshot({ path: `${shots}/12-dashboard-locked.png`, fullPage: true });
@@ -303,6 +303,22 @@ await page.getByText('Сообщение отправлено').waitFor();
   if (!lock || !lock.cancelled_at) fail('lock cancelled');
   const reasonBonus = s.bonuses.find((b) => b.minutes === -10);
   if (!reasonBonus || reasonBonus.reason !== 'не убрал комнату') fail('negative bonus with reason');
+}
+step('dashboard actions');
+
+// app block from the current app, then lift it
+{
+  const card = page.locator('[data-child="Миша"]');
+  await card.getByRole('button', { name: 'Заблокировать «Minecraft»: Миша' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '2 часа' }).click();
+  await card.getByRole('button', { name: 'Снять блокировку «Minecraft»' }).waitFor();
+  const b = (await store()).app_blocks[0];
+  if (!b || b.group_name !== 'Minecraft' || Math.abs(Date.parse(b.until) - Date.now() - 2 * 3600e3) > 120e3) fail('app block for 2 h');
+  await page.screenshot({ path: `${shots}/13b-app-block.png`, fullPage: true });
+  await card.getByRole('button', { name: 'Снять блокировку «Minecraft»' }).click();
+  await card.getByRole('button', { name: 'Заблокировать «Minecraft»: Миша' }).waitFor();
+  if (!(await store()).app_blocks[0].cancelled_at) fail('app block lifted');
+  step('app block from home + lift');
 }
 await page.screenshot({ path: `${shots}/13-dashboard.png`, fullPage: true });
 step('dashboard: bonus, custom bonus, lock/unlock, lock in 5 min, message');

@@ -21,6 +21,7 @@ const store = (window.__store = {
   ],
   tamper_events: [],
   device_logs: [],
+  app_blocks: [],
   app_groups: [],
   tg_chats: [{ chat_id: -100123, title: 'Семья', linked_by: 'Alexander', linked_at: iso(86400e3), children: null }],
   admins: [{ user_id: 'u1', email: 'admin@pc.home' }],

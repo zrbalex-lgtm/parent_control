@@ -19,6 +19,9 @@ public static class Texts
     public static string SignOut(DateTimeOffset untilLocal) =>
         $"Вход в Windows закрыт до {untilLocal:HH:mm}.\nСеанс будет завершён, несохранённое пропадёт.";
 
+    public static string AppBlocked(string group, DateTimeOffset untilLocal) =>
+        $"«{group}» заблокировано до {untilLocal:HH:mm}.";
+
     /// <summary>Short status line for the tray window.</summary>
     public static string LockShort(string? reason) => reason switch
     {

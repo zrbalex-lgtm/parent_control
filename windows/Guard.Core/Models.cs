@@ -92,6 +92,8 @@ public sealed record SyncResponse
     public string? TamperAction { get; init; }
     /// <summary>An adult asked for this PC's log (since 016).</summary>
     public bool SendLogs { get; init; }
+    /// <summary>App groups blocked for children of this PC, with the group's rules (since 017).</summary>
+    public List<AppBlockInfo> AppBlocks { get; init; } = [];
 }
 
 public static class RequestStatuses

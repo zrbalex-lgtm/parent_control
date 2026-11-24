@@ -256,6 +256,10 @@ public sealed class GuardEngine
         }
     }
 
+    /// <summary>App groups blocked for this child right now (from the last server answer).</summary>
+    public List<TrayBlock> AppBlocksFor(Guid childId, DateTimeOffset now) =>
+        AppBlocks.ActiveFor(State.LastSync?.AppBlocks ?? [], childId, now);
+
     /// <summary>The last server answer asked for the log.</summary>
     public bool LogsRequested => _creds is not null && State.LastSync?.SendLogs == true;
 

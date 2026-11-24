@@ -599,5 +599,40 @@ set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
 select pg_temp.check((select count(*) from parent_control.device_logs) = 0, 'other adult does not');
 reset request.jwt.claim.sub;
 
+-- ---------------------------------------------------------------------
+-- App blocks (017)
+-- ---------------------------------------------------------------------
+reset role;
+insert into app_groups (group_name, match_field, match_type, pattern) values
+  ('YouTube', 'title', 'contains', 'youtube'), ('YouTube', 'exe', 'regex', '^yt\.exe$');
+insert into app_groups (group_name, match_field, match_type, pattern, is_enabled) values ('YouTube', 'title', 'contains', 'off-rule', false);
+set role anon;
+select pg_temp.check(jsonb_array_length(device_sync(:'dev1', :'sec1b', '1.6.0', now(), current_date, '[]')->'app_blocks') = 0, 'no app blocks by default');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+insert into parent_control.app_blocks (child_id, group_name, until)
+values ('11111111-1111-1111-1111-111111111111', 'YouTube', now() + interval '2 hours') returning id as block1 \gset
+insert into parent_control.app_blocks (child_id, group_name, until)
+values ('11111111-1111-1111-1111-111111111111', 'Minecraft', now() + interval '1 hour') returning id as block2 \gset
+update parent_control.app_blocks set cancelled_at = now() where id = :'block2';
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.expect_error($$insert into parent_control.app_blocks (child_id, group_name, until)
+  values ('11111111-1111-1111-1111-111111111111', 'YouTube', now() + interval '1 hour')$$, '42501', 'other adult cannot block my child');
+reset request.jwt.claim.sub;
+reset role;
+set role anon;
+select device_sync(:'dev1', :'sec1b', '1.6.0', now(), current_date, '[]')->'app_blocks' as blocks \gset
+select pg_temp.check(jsonb_array_length(:'blocks'::jsonb) = 1, 'one active block (cancelled one skipped)');
+select pg_temp.check(:'blocks'::jsonb#>>'{0,group_name}' = 'YouTube', 'block names the group');
+select pg_temp.check(jsonb_array_length(:'blocks'::jsonb#>'{0,rules}') = 2, 'enabled rules of the group sent');
+select pg_temp.check(:'blocks'::jsonb#>>'{0,rules,1,pattern}' = '^yt\.exe$', 'rule pattern sent as is');
+reset role;
+update device_accounts set child_id = null where device_id = :'dev2';
+set role anon;
+select pg_temp.check(jsonb_array_length(device_sync(:'dev2', :'sec2', '1.6.0', now(), current_date, '[]')->'app_blocks') = 0, 'PC without that child gets none');
+select pg_temp.expect_error($$select parent_control.fn_device_app_blocks(gen_random_uuid())$$, '42501', 'helper not callable by PCs');
+reset role;
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

@@ -376,6 +376,8 @@ public sealed class GuardWorker(
             RequestMinutes = open?.Minutes,
             RequestKind = open?.Kind,
             RequestUploaded = open?.Uploaded ?? false,
+            // Only while the child may use the PC: a locked session is sent away anyway.
+            Blocks = d.Restricted && d.Lock is null && d.ChildId is { } c ? NullIfEmpty(engine.AppBlocksFor(c, now)) : null,
         };
         var msg = new IpcMessage { Type = IpcTypes.Status, Status = status };
         var json = Ipc.Serialize(msg);
@@ -386,6 +388,8 @@ public sealed class GuardWorker(
             _lastStatusAt = now;
         }
     }
+
+    private static List<TrayBlock>? NullIfEmpty(List<TrayBlock> list) => list.Count == 0 ? null : list;
 
     /// <summary>Admin messages and answers to time requests; via tray, or a system box if no tray shows up.</summary>
     private void PushNotices(uint session, Decision d, DateTimeOffset now)

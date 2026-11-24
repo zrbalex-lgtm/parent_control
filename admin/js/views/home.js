@@ -1,4 +1,5 @@
 // Home dashboard: pending requests, then one live card per child with quick actions.
+import { blockAppDialog, blockChips } from './appblock.js';
 import {
   h, busy, toast, avatar, modal, confirmDialog, fmtAgo, fmtTime, fmtMinutes, localDate,
 } from '../ui.js';
@@ -35,8 +36,8 @@ export async function render({ api }) {
 
   async function draw() {
     const today = localDate();
-    const [{ pending, recent }, devices, dash] = await Promise.all([
-      api.listRequests(), api.listDevices(), api.dashboard(today),
+    const [{ pending, recent }, devices, dash, appBlocks] = await Promise.all([
+      api.listRequests(), api.listDevices(), api.dashboard(today), api.listAppBlocks(),
     ]);
     const children = dash?.children || [];
     const childById = new Map(children.map((c) => [c.id, c]));
@@ -156,6 +157,7 @@ export async function render({ api }) {
       if (c.requires_unlock) {
         badges.push(h('span', { class: `flag ${c.unlocked ? 'ok' : ''}` }, c.unlocked ? 'Доступ открыт' : 'Доступ закрыт'));
       }
+      badges.push(...blockChips(api, appBlocks.filter((b) => b.child_id === c.id), refresh));
       if (c.tamper_locked) {
         badges.push(h('a', { class: 'flag danger', href: '#/security' }, 'Заблокирован после вмешательства'));
       } else if (c.tamper_unhandled > 0) {
@@ -226,7 +228,15 @@ export async function render({ api }) {
         h('div', { class: 'row' },
           avatar(c),
           h('div', { class: 'grow' }, h('div', { class: 'strong' }, c.name), where)),
-        app ? h('div', { class: 'now-app', title: c.now.title || '' }, app) : null,
+        app ? h('div', { class: 'now-app-row' },
+          h('div', { class: 'now-app grow', title: c.now.title || '' }, app),
+          // Only a group can be blocked: its rules say which windows belong to it.
+          c.now.app_group && !appBlocks.some((b) => b.child_id === c.id && b.group_name === c.now.app_group)
+            ? h('button', {
+                class: 'btn ghost small', 'aria-label': `Заблокировать «${c.now.app_group}»: ${c.name}`,
+                onclick: async () => { if (await blockAppDialog(api, c, c.now.app_group)) await refresh(); },
+              }, 'Блок')
+            : null) : null,
         usage,
         badges.length ? h('div', { class: 'flags' }, badges) : null,
         h('div', { class: 'bonus-row', role: 'group', 'aria-label': 'Добавить время' }, bonusButtons),

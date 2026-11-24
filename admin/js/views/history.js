@@ -2,6 +2,7 @@
 // Tapping a day in the chart narrows apps and sessions to that day; tapping an app shows its window titles.
 import { h, toast, avatar, localDate, fmtDuration, fmtTime, fmtDate, WEEKDAYS } from '../ui.js';
 import { editRule, suggestName } from './groups.js';
+import { blockAppDialog } from './appblock.js';
 
 const PERIODS = [{ days: 7, label: '7 дней' }, { days: 30, label: '30 дней' }];
 const BROWSER_EXES = /^(chrome|msedge|firefox|opera|brave|vivaldi|browser)\.exe$/i;
@@ -164,6 +165,13 @@ export async function render({ api, navigate }) {
       return h('li', { class: 'app-row' },
         h('div', { class: 'app-head' },
           toggle,
+          a.grouped ? h('button', {
+            class: 'btn ghost small', 'aria-label': `Заблокировать: ${a.app}`,
+            onclick: async () => {
+              const child = children.find((c) => c.id === selectedChildId);
+              await blockAppDialog(api, child, a.app);
+            },
+          }, 'Блок') : null,
           a.grouped || SYNTHETIC.test(a.app) ? null : h('button', {
             class: 'btn ghost small', 'aria-label': `В группу: ${a.app}`,
             onclick: async () => {

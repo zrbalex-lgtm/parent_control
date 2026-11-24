@@ -76,6 +76,7 @@ internal sealed class TrayContext : ApplicationContext
     private FinalWarningForm? _finalForm;
     private readonly Dictionary<string, NoticeForm> _notices = [];
     private Icon? _currentIcon;
+    private readonly BlockEnforcer _blocker;
 
     public TrayContext()
     {
@@ -84,6 +85,10 @@ internal sealed class TrayContext : ApplicationContext
         _icon = new NotifyIcon { Text = Texts.Title, ContextMenuStrip = menu, Visible = false };
         _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowStatus(); };
         _statusForm.RequestSubmitted += RequestTime;
+
+        _blocker = new BlockEnforcer(
+            b => _icon.ShowBalloonTip(5000, Texts.Title, Texts.AppBlocked(b.Group, b.Until.ToLocalTime()), ToolTipIcon.Warning),
+            m => { if (_pipe.Connected) _pipe.Send(m); });
 
         // Needed for the pipe callbacks to land on this (UI) thread.
         _ = _statusForm.Handle;
@@ -111,6 +116,7 @@ internal sealed class TrayContext : ApplicationContext
         {
             case IpcTypes.Status:
                 _status = m.Status;
+                _blocker.Update(_status?.Blocks);
                 if (_status?.Lock is null) CloseLock(); // time was added or lock lifted
                 _lockForm?.SetOpenRequest(_status?.RequestMinutes, _status?.RequestKind);
                 Refresh();
@@ -218,6 +224,7 @@ internal sealed class TrayContext : ApplicationContext
         if (disposing)
         {
             _activityTimer.Dispose();
+            _blocker.Dispose();
             _pipe.Dispose();
             _icon.Visible = false;
             _icon.Dispose();

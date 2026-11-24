@@ -116,6 +116,10 @@ public sealed class TrayHub(TimeProvider time, ILogger<TrayHub> log) : Backgroun
                         Inbox.Enqueue((c.Session, m));
                         Wake();
                         break;
+                    case IpcTypes.AppBlocked:
+                        log.LogInformation("Blocked app group {Group} in session {Session}: {Action} \"{Title}\" ({Exe})",
+                            m.Group, c.Session, m.Kind, m.Title, m.Exe);
+                        break;
                     case IpcTypes.Hello:
                         log.LogInformation("Tray {Version} hello from session {Session}", m.Version, c.Session);
                         break;

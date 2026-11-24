@@ -339,6 +339,10 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .presence .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
 .presence.on { color: var(--text); }
 .presence.on .dot { background: var(--ok); }
+.now-app-row { display: flex; align-items: center; gap: 8px; }
+.now-app-row .now-app { min-width: 0; }
+.flag-btn { font: inherit; font-size: .8rem; cursor: pointer; }
+.choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .now-app {
   font-size: .9rem; padding: 8px 10px; border-radius: 10px; background: var(--surface-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
