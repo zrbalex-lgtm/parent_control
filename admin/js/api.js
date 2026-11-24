@@ -18,7 +18,7 @@ const hhmm = (t) => (t ? String(t).slice(0, 5) : null);
 
 const DEVICE_COLUMNS =
   'id,name,machine_name,is_enabled,registered_at,reg_code_expires_at,' +
-  'client_version,last_seen_at,clock_skew_sec,created_at,tamper_locked_since,config_state,auto_update';
+  'client_version,last_seen_at,clock_skew_sec,created_at,tamper_locked_since,config_state,auto_update,logs_requested_at';
 
 export const api = {
   // ---------------- auth ----------------
@@ -105,19 +105,32 @@ export const api = {
 
   // ---------------- devices ----------------
   async listDevices() {
-    const [devices, flags, accounts] = await Promise.all([
+    const [devices, flags, accounts, logs] = await Promise.all([
       sb.from('devices').select(DEVICE_COLUMNS).order('name').then(unwrap),
       sb.from('v_device_flags').select('*').then(unwrap),
       sb.from('device_accounts')
         .select('id,device_id,windows_sid,windows_user,child_id,last_seen_at,reviewed_at')
         .order('windows_user').then(unwrap),
+      // Older servers have no device_logs table: no logs then.
+      sb.from('device_logs').select('id,device_id,uploaded_at,size_bytes')
+        .order('uploaded_at', { ascending: false }).then(unwrap).catch(() => []),
     ]);
     const flagsById = new Map(flags.map((f) => [f.device_id, f]));
     return devices.map((d) => ({
       ...d,
       flags: flagsById.get(d.id) || {},
       accounts: accounts.filter((a) => a.device_id === d.id),
+      lastLog: logs.find((l) => l.device_id === d.id) || null,
     }));
+  },
+  /** Asks the PC to upload its log on the next sync. */
+  async requestLogs(deviceId) {
+    unwrap(await sb.from('devices').update({ logs_requested_at: new Date().toISOString() }).eq('id', deviceId));
+  },
+  async getLog(logId) {
+    const rows = unwrap(await sb.from('device_logs').select('content,uploaded_at').eq('id', logId).limit(1));
+    if (!rows.length) throw new Error('Журнал не найден');
+    return rows[0];
   },
   async createDevice(name) {
     const rows = unwrap(await sb.rpc('admin_create_device', { p_name: name }));

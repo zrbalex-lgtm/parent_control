@@ -1,7 +1,11 @@
 // Devices: PCs, registration codes, Windows account -> child binding.
-import { h, modal, confirmDialog, busy, toast, fmtAgo, fmtTime } from '../ui.js';
+import { h, modal, confirmDialog, busy, toast, fmtAgo, fmtTime, fmtDate, localDate } from '../ui.js';
 
 const ONLINE_MS = 2 * 60 * 1000;
+// Stop waiting for a requested log after this long (PC switched off).
+const LOG_WAIT_MS = 10 * 60 * 1000;
+
+const fmtSize = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} МБ` : `${Math.max(1, Math.round(bytes / 1024))} КБ`);
 
 // Close "⋯" menus on outside click or after picking an item.
 document.addEventListener('click', (e) => {
@@ -76,6 +80,55 @@ function askName(title, initial = '') {
 
 export async function render({ api }) {
   const container = h('div', { class: 'stack' });
+  let pollTimer = null;
+
+  /** "Log: waiting" or the last uploaded log with open/download. */
+  function logRow(d) {
+    const waitingSince = d.logs_requested_at && Date.now() - Date.parse(d.logs_requested_at) < LOG_WAIT_MS;
+    const log = d.lastLog;
+    if (!waitingSince && !log) return null;
+    return h('div', { class: 'log-row' },
+      h('span', { class: 'grow muted small' },
+        waitingSince
+          ? 'Журнал: ждём ПК… Придёт в течение минуты, если компьютер включён.'
+          : `Журнал от ${fmtDate(localDate(new Date(log.uploaded_at)))}, ${fmtTime(log.uploaded_at)} · ${fmtSize(log.size_bytes)}`),
+      log && !waitingSince ? h('button', { class: 'btn ghost small', onclick: (e) => busy(e.currentTarget, () => openLog(d, log)) }, 'Открыть') : null,
+      log && !waitingSince ? h('button', { class: 'btn ghost small', onclick: (e) => busy(e.currentTarget, () => downloadLog(d, log)) }, 'Скачать') : null);
+  }
+
+  async function requestLogs(d) {
+    await busy(null, async () => {
+      await api.requestLogs(d.id);
+      toast('Запрос отправлен — журнал придёт в течение минуты', 'ok');
+      await refresh();
+    });
+  }
+
+  async function openLog(d, log) {
+    const { content } = await api.getLog(log.id);
+    // Newest lines matter most: open scrolled to the end.
+    const pre = h('pre', { class: 'log-text', tabindex: '0' }, content);
+    modal(`Журнал: ${d.name}`, (close) => [
+      pre,
+      h('div', { class: 'actions' },
+        h('button', { class: 'btn ghost', onclick: () => downloadLog(d, log, content) }, 'Скачать'),
+        h('span', { class: 'grow' }),
+        h('button', { class: 'btn primary', onclick: () => close() }, 'Готово')),
+    ]);
+    requestAnimationFrame(() => { pre.scrollTop = pre.scrollHeight; });
+  }
+
+  async function downloadLog(d, log, content) {
+    const text = content ?? (await api.getLog(log.id)).content;
+    const stamp = log.uploaded_at.slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+    const name = `log-${(d.machine_name || d.name).replace(/[^\w.-]+/g, '_')}-${stamp}.txt`;
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    const a = h('a', { href: url, download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
 
   async function refresh() {
     const [devices, children] = await Promise.all([api.listDevices(), api.listChildren()]);
@@ -110,6 +163,7 @@ export async function render({ api }) {
           d.tamper_locked_since ? h('button', { onclick: () => unlockTamper(d) }, 'Разблокировать после вмешательства') : null,
           h('button', { onclick: () => toggle(d) }, d.is_enabled ? 'Отключить' : 'Включить'),
           d.registered_at ? h('button', { onclick: () => toggleUpdates(d) }, d.auto_update === false ? 'Включить автообновление' : 'Выключить автообновление') : null,
+          d.registered_at ? h('button', { onclick: () => requestLogs(d) }, 'Прислать журнал') : null,
           h('button', { onclick: () => newCode(d) }, d.registered_at ? 'Переустановка: новый код' : 'Новый код'),
           h('button', { class: 'danger-text', onclick: () => remove(d) }, 'Удалить')));
       const flags = flagChips(d);
@@ -122,12 +176,20 @@ export async function render({ api }) {
           menu),
         h('div', { class: `status ${st.kind}` }, h('span', { class: 'dot', 'aria-hidden': 'true' }), st.text),
         flags.length ? h('div', { class: 'flags' }, flags) : null,
+        logRow(d),
         d.accounts.length
           ? h('ul', { class: 'accounts' }, d.accounts.map(accountRow))
           : d.registered_at
             ? h('p', { class: 'muted small' }, 'Учётки появятся после первого входа в Windows.')
             : null);
     };
+
+    // While a PC is asked for its log, look again every few seconds until it arrives.
+    clearTimeout(pollTimer);
+    const waiting = devices.some((d) => d.logs_requested_at && Date.now() - Date.parse(d.logs_requested_at) < LOG_WAIT_MS);
+    if (waiting) {
+      pollTimer = setTimeout(() => { if (container.isConnected) refresh().catch(() => {}); }, 5000);
+    }
 
     container.replaceChildren(
       devices.length

@@ -224,6 +224,13 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
 }
+.log-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.log-text {
+  margin: 0; max-height: 60vh; overflow: auto; padding: 10px; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--line);
+  font: .72rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word;
+}
 .accounts { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .account { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 10px 0 0; }
 .account-name { margin: 0; color: var(--text); font-size: 1rem; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
