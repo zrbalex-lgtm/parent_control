@@ -32,6 +32,16 @@ public sealed class Updater
     private string? _readyDir;
     private string? _readyVersion;
     private DateTimeOffset _readySince;
+    private DateTimeOffset _forcedUntil = DateTimeOffset.MinValue;
+
+    /// <summary>An adult pressed "update now": check right away and install even while a child is at the PC.</summary>
+    public void RequestNow()
+    {
+        var now = _time.GetUtcNow();
+        _forcedUntil = now + TimeSpan.FromHours(1);
+        if (_readyDir is null) _nextCheck = now;
+        _log.LogInformation("Update requested from the admin app");
+    }
 
     public Updater(GuardEngine engine, DataDirectory data, TimeProvider time, ILogger<Updater> log)
     {
@@ -56,7 +66,7 @@ public sealed class Updater
 
         if (_readyDir is not null)
         {
-            if (UpdatePlanner.CanInstallNow(childActive, _readySince, now)) Install();
+            if (now < _forcedUntil || UpdatePlanner.CanInstallNow(childActive, _readySince, now)) Install();
             return;
         }
         if (now < _nextCheck) return;

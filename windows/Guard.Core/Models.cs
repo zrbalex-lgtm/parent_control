@@ -94,6 +94,8 @@ public sealed record SyncResponse
     public bool SendLogs { get; init; }
     /// <summary>App groups blocked for children of this PC, with the group's rules (since 017).</summary>
     public List<AppBlockInfo> AppBlocks { get; init; } = [];
+    /// <summary>When an adult asked to update now; null if not in the last hour (since 018).</summary>
+    public DateTimeOffset? UpdateRequestedAt { get; init; }
 }
 
 public static class RequestStatuses

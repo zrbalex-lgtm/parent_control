@@ -130,6 +130,11 @@ step('device disabled via menu + confirm');
 await page.screenshot({ path: `${shots}/05-devices-after.png`, fullPage: true });
 
 await page.getByLabel('Действия: Комп в детской').click();
+await page.getByRole('button', { name: 'Обновить сейчас' }).click();
+await page.getByText(/ПК проверит обновление/).waitFor();
+if (!(await store()).devices[0].update_requested_at) fail('update requested');
+step('update now');
+await page.getByLabel('Действия: Комп в детской').click();
 await page.getByRole('button', { name: 'Выключить автообновление' }).click();
 await page.getByText('Автообновление выключено', { exact: true }).waitFor();
 if ((await store()).devices[0].auto_update !== false) fail('auto update switched off');
@@ -152,6 +157,7 @@ await page.getByRole('dialog').getByText(/Sign-in of nicya denied/).waitFor();
 await page.screenshot({ path: `${shots}/05b-device-log.png`, fullPage: true });
 await page.getByRole('dialog').getByRole('button', { name: 'Готово' }).click();
 step('remote log request + view');
+
 
 // ---------- security ----------
 await page.getByText('Заблокирован после вмешательства').first().waitFor();

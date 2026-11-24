@@ -634,5 +634,26 @@ select pg_temp.check(jsonb_array_length(device_sync(:'dev2', :'sec2', '1.6.0', n
 select pg_temp.expect_error($$select parent_control.fn_device_app_blocks(gen_random_uuid())$$, '42501', 'helper not callable by PCs');
 reset role;
 
+-- ---------------------------------------------------------------------
+-- Update now (018)
+-- ---------------------------------------------------------------------
+reset role;
+set role anon;
+select pg_temp.check(device_sync(:'dev1', :'sec1b', '1.6.1', now(), current_date, '[]')->>'update_requested_at' is null, 'no update request by default');
+reset role;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-00000000000a';
+update parent_control.devices set update_requested_at = now() where id = :'dev1';
+reset request.jwt.claim.sub;
+reset role;
+set role anon;
+select pg_temp.check(device_sync(:'dev1', :'sec1b', '1.6.1', now(), current_date, '[]')->>'update_requested_at' is not null, 'PC told to update now');
+select pg_temp.check(device_sync(:'dev1', :'sec1b', '1.6.1', now(), current_date, '[]') ? 'app_blocks', 'blocks still in the answer');
+reset role;
+update devices set update_requested_at = now() - interval '2 hours' where id = :'dev1';
+set role anon;
+select pg_temp.check(device_sync(:'dev1', :'sec1b', '1.6.1', now(), current_date, '[]')->>'update_requested_at' is null, 'old update request expires');
+reset role;
+
 reset role;
 select pg_temp.check(true, 'ALL TESTS PASSED');

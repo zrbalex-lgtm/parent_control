@@ -22,11 +22,12 @@ Supabase project (one schema per home project; Auth is shared).
 | `migrations/015_app_names.sql` | Readable app names (browsers split by site, Windows parts), `admin_app_titles` drill-down |
 | `migrations/016_device_logs.sql` | Remote logs: `devices.logs_requested_at`, `device_logs`, `device_upload_logs`; `device_sync` answers `send_logs` (wrapper over `device_sync_core`) |
 | `migrations/017_app_blocks.sql` | App blocks: `app_blocks` (group blocked for a child until a time); `device_sync` answers `app_blocks` with the group's rules |
+| `migrations/018_update_now.sql` | "Update now": `devices.update_requested_at`, passed to the PC by `device_sync` for an hour |
 | `tests/` | Local test run against plain PostgreSQL (with a Supabase stub) |
 
 ## Applying to Supabase
 
-1. Run the migrations in order: `001` … `017`.
+1. Run the migrations in order: `001` … `018`.
 2. Settings → API (Data API) → **Exposed schemas**: add `parent_control`.
 3. Auth → Providers → Email: **disable sign-ups** (shared by all home projects).
 4. Create the parent user (Auth → Users → Add user), then:

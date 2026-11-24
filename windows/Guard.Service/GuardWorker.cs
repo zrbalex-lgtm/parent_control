@@ -34,6 +34,9 @@ public sealed class GuardWorker(
     private bool _syncNow;
     private DateTimeOffset _lastSyncAt = DateTimeOffset.MinValue;
     private DateTimeOffset _lastLogUploadAt = DateTimeOffset.MinValue;
+    private DateTimeOffset? _handledUpdateRequest;
+    private string? _lastAppKey;
+    private string? _lastBlocksKey;
 
     // per console session
     private uint? _session;
@@ -145,6 +148,11 @@ public sealed class GuardWorker(
             if (outcome == SyncOutcome.NotRegistered && _notRegisteredTicks++ % 60 == 0)
             {
                 log.LogWarning("Device is not registered; run: ParentControl.Guard.exe register <CODE>");
+            }
+            if (engine.State.LastSync?.UpdateRequestedAt is { } asked && asked != _handledUpdateRequest)
+            {
+                _handledUpdateRequest = asked;
+                updater.RequestNow();
             }
             if (engine.LogsRequested && now - _lastLogUploadAt >= TimeSpan.FromMinutes(1))
             {
@@ -379,6 +387,12 @@ public sealed class GuardWorker(
             // Only while the child may use the PC: a locked session is sent away anyway.
             Blocks = d.Restricted && d.Lock is null && d.ChildId is { } c ? NullIfEmpty(engine.AppBlocksFor(c, now)) : null,
         };
+        var blocksKey = string.Join(", ", status.Blocks?.Select(b => $"{b.Group} until {b.Until.ToLocalTime():HH:mm}") ?? []);
+        if (d.Restricted && blocksKey != _lastBlocksKey)
+        {
+            log.LogInformation("App blocks for {Child}: {Blocks}", d.ChildName, blocksKey.Length > 0 ? blocksKey : "none");
+            _lastBlocksKey = blocksKey;
+        }
         var msg = new IpcMessage { Type = IpcTypes.Status, Status = status };
         var json = Ipc.Serialize(msg);
         if (json == _lastStatusJson && now - _lastStatusAt < TimeSpan.FromSeconds(30)) return;
@@ -426,6 +440,16 @@ public sealed class GuardWorker(
         {
             log.LogInformation("Console session: {State} {User}", sample.State, sample.User ?? "-");
             _lastStateKey = stateKey;
+        }
+        // What is on the screen, once per change (window titles of browsers name the site or video).
+        if (sample.User is not null && HeartbeatStates.IsCounted(sample.State))
+        {
+            var appKey = $"{sample.Exe}|{sample.Title}";
+            if (appKey != _lastAppKey && (sample.Exe is not null || sample.Title is not null))
+            {
+                log.LogInformation("App ({User}): {Exe} \"{Title}\"", sample.User, sample.Exe ?? "-", sample.Title ?? "");
+            }
+            _lastAppKey = appKey;
         }
         var decisionKey = $"{decision.ChildName}/{decision.Lock}/{decision.StaleSettings}";
         if (decision.Restricted && decisionKey != _lastDecisionKey)

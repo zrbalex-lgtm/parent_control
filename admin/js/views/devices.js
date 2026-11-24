@@ -104,6 +104,13 @@ export async function render({ api }) {
     });
   }
 
+  async function updateNow(d) {
+    await busy(null, async () => {
+      await api.updateDevice(d.id, { update_requested_at: new Date().toISOString() });
+      toast('ПК проверит обновление в течение минуты и поставит его, даже если ребёнок за ним', 'ok');
+    });
+  }
+
   async function openLog(d, log) {
     const { content } = await api.getLog(log.id);
     // Newest lines matter most: open scrolled to the end.
@@ -164,6 +171,7 @@ export async function render({ api }) {
           h('button', { onclick: () => toggle(d) }, d.is_enabled ? 'Отключить' : 'Включить'),
           d.registered_at ? h('button', { onclick: () => toggleUpdates(d) }, d.auto_update === false ? 'Включить автообновление' : 'Выключить автообновление') : null,
           d.registered_at ? h('button', { onclick: () => requestLogs(d) }, 'Прислать журнал') : null,
+          d.registered_at && d.auto_update !== false ? h('button', { onclick: () => updateNow(d) }, 'Обновить сейчас') : null,
           h('button', { onclick: () => newCode(d) }, d.registered_at ? 'Переустановка: новый код' : 'Новый код'),
           h('button', { class: 'danger-text', onclick: () => remove(d) }, 'Удалить')));
       const flags = flagChips(d);
