@@ -1,4 +1,4 @@
-// Settings: Telegram chats that get request notifications and can answer them.
+// Settings: children and PCs (one-off setup), adults, Telegram chats that get request notifications.
 import { h, modal, confirmDialog, busy, toast, fmtAgo } from '../ui.js';
 
 const BOT = 'Parent_control_zrb_bot';
@@ -24,7 +24,22 @@ export async function render({ api }) {
   const container = h('div', { class: 'stack' });
 
   async function refresh() {
-    const [chats, admins, children] = await Promise.all([api.listTgChats(), api.listAdmins(), api.listChildren()]);
+    const [chats, admins, children, devices] = await Promise.all([
+      api.listTgChats(), api.listAdmins(), api.listChildren(), api.listDevices()]);
+
+    // A PC needs a look: unbound account, tamper lock or lost config.
+    const attention = devices.filter((d) => d.flags?.unbound_account || d.tamper_locked_since || d.config_state === 'lost').length;
+    const link = (route, title, hint, warn) => h('li', {},
+      h('a', { class: 'nav-row', href: `#/${route}` },
+        h('span', { class: 'grow' }, h('span', { class: 'strong block' }, title), h('span', { class: 'muted small' }, hint)),
+        warn ? h('span', { class: 'flag' }, warn) : null,
+        h('span', { class: 'chev', 'aria-hidden': 'true' }, '›')));
+    const setupCard = h('section', { class: 'card stack', 'aria-label': 'Дети и компьютеры' },
+      h('ul', { class: 'list nav-list' },
+        link('children', 'Дети', children.length ? children.map((c) => c.name).join(', ') : 'Пока никого — добавь'),
+        link('devices', 'Компьютеры',
+          devices.length ? `${devices.length} · установка, учётки Windows, журнал` : 'Пока нет — добавь, чтобы установить на ПК',
+          attention ? `нужно внимание: ${attention}` : null)));
 
     // Which of my children a chat hears about (null = all of them).
     const chatChildren = (c) => {
@@ -80,7 +95,7 @@ export async function render({ api }) {
         },
       }, '×')), chatChildren(c));
 
-    container.replaceChildren(adultsCard,
+    container.replaceChildren(setupCard, adultsCard,
       h('section', { class: 'card stack', 'aria-labelledby': 'tg-title' },
         h('h2', { id: 'tg-title' }, 'Telegram'),
         h('p', { class: 'muted small' },

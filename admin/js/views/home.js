@@ -255,7 +255,7 @@ export async function render({ api }) {
         : null,
       children.length
         ? h('ul', { class: 'list' }, children.map(childCard))
-        : h('div', { class: 'card empty' }, h('p', { class: 'muted' }, 'Добавь детей на вкладке «Дети».')),
+        : h('div', { class: 'card empty' }, h('p', { class: 'muted' }, 'Добавь детей: ⚙ Настройки → Дети.')),
       h('div', { class: 'refresh-row muted small' },
         h('span', {}, `Обновлено в ${fmtTime(new Date())}`),
         h('button', { class: 'btn ghost small', onclick: (e) => busy(e.currentTarget, refresh) }, 'Обновить')),

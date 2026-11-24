@@ -4,13 +4,13 @@ import { h, toast, busy, humanError } from './ui.js';
 const ROUTES = {
   home: { title: 'Главная', icon: '⌂', load: () => import('./views/home.js') },
   history: { title: 'История', icon: '▤', load: () => import('./views/history.js') },
-  children: { title: 'Дети', icon: '☺', load: () => import('./views/children.js') },
   schedule: { title: 'Расписание', icon: '◷', load: () => import('./views/schedule.js') },
-  devices: { title: 'Устройства', tab: 'ПК', icon: '▭', load: () => import('./views/devices.js') },
   security: { title: 'Безопасность', tab: 'Защита', icon: '◈', load: () => import('./views/security.js') },
-  // Not in the tab bar: opened from History.
+  // Not in the tab bar: opened from History or from Settings (one-off setup).
   groups: { title: 'Группы приложений', icon: '', hidden: true, parent: 'history', load: () => import('./views/groups.js') },
   settings: { title: 'Настройки', icon: '', hidden: true, load: () => import('./views/settings.js') },
+  children: { title: 'Дети', icon: '', hidden: true, parent: 'settings', load: () => import('./views/children.js') },
+  devices: { title: 'Компьютеры', icon: '', hidden: true, parent: 'settings', load: () => import('./views/devices.js') },
 };
 const DEFAULT_ROUTE = 'home';
 
@@ -106,7 +106,11 @@ async function renderRoute() {
     if (seq !== renderSeq) return;
     const content = await mod.render({ api, navigate: (r) => { location.hash = `#/${r}`; } });
     if (seq !== renderSeq) return;
-    view.replaceChildren(content);
+    // Pages without their own tab get a way back to where they are opened from.
+    const back = route.parent
+      ? h('a', { class: 'back-link', href: `#/${route.parent}` }, `‹ ${ROUTES[route.parent].title}`)
+      : null;
+    view.replaceChildren(...[back, content].filter(Boolean));
     updateSecurityBadge();
   } catch (err) {
     if (seq !== renderSeq) return;

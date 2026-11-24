@@ -30,6 +30,13 @@ const base = `http://127.0.0.1:${server.address().port}/`;
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+
+// Children and PCs live under Settings now.
+async function openSetup(name) {
+  await page.getByRole('link', { name: 'Настройки', exact: true }).click();
+  await page.locator('.nav-row', { hasText: name }).click();
+  await page.locator('.back-link').waitFor();
+}
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 page.on('console', (m) => { if (m.type() === 'error' && !/Invalid login|user not found/.test(m.text())) errors.push(`console: ${m.text()}`); });
@@ -53,10 +60,10 @@ await page.screenshot({ path: `${shots}/01-login.png` });
 await page.getByLabel('Пароль').fill('secret');
 await page.getByRole('button', { name: 'Войти' }).click();
 await page.getByRole('heading', { name: 'Главная' }).waitFor();
-await page.getByText('Добавь детей на вкладке «Дети».').waitFor();
+await page.getByText('Добавь детей: ⚙ Настройки → Дети.').waitFor();
 step('login lands on home with no requests');
-await page.getByRole('link', { name: /^ПК$/ }).click();
-await page.getByRole('heading', { name: 'Устройства' }).waitFor();
+await openSetup('Компьютеры');
+await page.getByRole('heading', { name: 'Компьютеры' }).waitFor();
 
 // ---------- devices before children ----------
 await page.getByText('Онлайн').waitFor();
@@ -66,7 +73,7 @@ step('device status and flags render');
 await page.screenshot({ path: `${shots}/02-devices.png`, fullPage: true });
 
 // ---------- children ----------
-await page.getByRole('link', { name: /Дети/ }).click();
+await openSetup('Дети');
 await page.getByText('Пока никого нет.').waitFor();
 for (const [name, emoji] of [['Миша', '🦊'], ['Аня', '']]) {
   await page.getByRole('button', { name: '+ Добавить ребёнка' }).click();
@@ -88,7 +95,7 @@ await page.getByRole('button', { name: 'Изменить: Анна' }).waitFor()
 step('child renamed');
 
 // ---------- bind account ----------
-await page.getByRole('link', { name: /^ПК$/ }).click();
+await openSetup('Компьютеры');
 if ((await page.getByLabel(/papa/).inputValue()) !== '') fail('reviewed account shows "no limits"');
 if ((await page.getByLabel(/misha/).inputValue()) !== '__new') fail('new account asks for a choice');
 await page.getByText('Есть непривязанная учётка').waitFor();
@@ -218,7 +225,7 @@ await page.screenshot({ path: `${shots}/09-requests-after.png`, fullPage: true }
 
 // ---------- locked by default (per child) ----------
 for (const name of ['Миша', 'Анна']) {
-  await page.getByRole('link', { name: /Дети/ }).click();
+  await openSetup('Дети');
   await page.getByRole('button', { name: `Изменить: ${name}` }).click();
   await page.getByRole('switch').check();
   await page.getByRole('button', { name: 'Сохранить' }).click();
@@ -245,7 +252,7 @@ await annaCard.getByText('Доступ открыт').waitFor();
 if ((await store()).day_unlocks.length !== 2) fail('two day unlocks');
 await mishaCard.getByRole('button', { name: 'Закрыть доступ' }).click();
 await mishaCard.getByText('Доступ закрыт').waitFor();
-await page.getByRole('link', { name: /Дети/ }).click();
+await openSetup('Дети');
 await page.getByRole('button', { name: 'Изменить: Анна' }).click();
 await page.getByRole('switch').uncheck();
 await page.getByRole('button', { name: 'Сохранить' }).click();
@@ -327,7 +334,7 @@ await page.getByText('Расписание сохранено').waitFor();
 step('weekly schedule saved (Mon copied to weekdays)');
 
 // reload view: values come back from "server"
-await page.getByRole('link', { name: /Дети/ }).click();
+await openSetup('Дети');
 await page.getByRole('link', { name: /Расписание/ }).click();
 await page.getByLabel('Пятница: с').waitFor();
 if (await page.getByLabel('Пятница: с').inputValue() !== '15:00') fail('friday window reloaded');
@@ -416,7 +423,7 @@ step('groups: rules, ungrouped list, regex error');
 await page.screenshot({ path: `${shots}/17-groups.png`, fullPage: true });
 
 // ---------- settings: telegram ----------
-await page.getByRole('link', { name: 'Настройки' }).click();
+await page.getByRole('link', { name: 'Настройки', exact: true }).click();
 await page.getByRole('heading', { name: 'Telegram' }).waitFor();
 await page.getByText('Семья').waitFor();
 await page.getByRole('button', { name: '+ Подключить чат' }).click();
@@ -442,7 +449,7 @@ await page.locator('#adults-title').locator('..').getByText('sister@pc.home').wa
 await page.screenshot({ path: `${shots}/20-settings-adults.png`, fullPage: true });
 step('settings: adult added by email');
 
-await page.getByRole('link', { name: /Дети/ }).click();
+await openSetup('Дети');
 await page.getByRole('button', { name: 'Изменить: Анна' }).click();
 await page.getByLabel('Добавить взрослого').selectOption({ label: 'sister@pc.home' });
 await page.getByText('Взрослый добавлен').waitFor();
@@ -455,7 +462,7 @@ if ((await store()).child_admins.length !== 0) fail('adult removed from child');
 await page.keyboard.press('Escape');
 step('child: adults added and removed');
 
-await page.getByRole('link', { name: 'Настройки' }).click();
+await page.getByRole('link', { name: 'Настройки', exact: true }).click();
 await page.getByRole('heading', { name: 'Telegram' }).waitFor();
 await page.getByRole('button', { name: 'Отключить: Семья' }).click();
 await page.getByRole('dialog').getByRole('button', { name: 'Отключить' }).click();
@@ -472,7 +479,7 @@ await page.setViewportSize({ width: 360, height: 780 });
 await page.getByLabel('Пароль').fill('secret');
 await page.getByLabel('Email').fill('admin@pc.home');
 await page.getByRole('button', { name: 'Войти' }).click();
-for (const tab of ['Главная', 'История', 'Дети', 'Расписание', 'ПК', 'Защита']) {
+for (const tab of ['Главная', 'История', 'Расписание', 'Защита']) {
   await page.getByRole('link', { name: new RegExp(`^${tab}`) }).click();
   await page.waitForTimeout(400);
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

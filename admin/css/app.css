@@ -72,6 +72,10 @@ main {
   color: var(--muted); text-decoration: none; font-size: .75rem;
 }
 .tab-icon { font-size: 1.35rem; line-height: 1; }
+.back-link { display: inline-block; margin: 0 0 10px; color: var(--accent); text-decoration: none; font-size: .95rem; }
+.nav-list > li + li { border-top: 1px solid var(--line); }
+.nav-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; color: var(--text); text-decoration: none; }
+.nav-row .chev { color: var(--muted); font-size: 1.3rem; }
 .tab.active { color: var(--accent); }
 
 /* ---------- cards & lists ---------- */
